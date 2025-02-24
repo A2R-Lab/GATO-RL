@@ -1,14 +1,15 @@
 import numpy as np
 from pinocchio.robot_wrapper import RobotWrapper
 import torch
+import pinocchio as pin
 
 ############################################# CACTO PARAMETERS #############################################
 EP_UPDATE = 200                                                                                            # Number of episodes before updating critic and actor
 NUPDATES = 100000                                                                                           # Max NNs updates
-UPDATE_LOOPS = np.arange(1000, 4000, 3000)                                                                 # Number of updates of both critic and actor performed every EP_UPDATE episodes                                                                                
+UPDATE_LOOPS = np.arange(1000, 48000, 3000)                                                                 # Number of updates of both critic and actor performed every EP_UPDATE episodes                                                                                
 NEPISODES = int(EP_UPDATE*len(UPDATE_LOOPS))                                                                # Max training episodes
 NLOOPS = len(UPDATE_LOOPS)                                                                                  # Number of algorithm loops
-NSTEPS = 100                                                                                                # Max episode length
+NSTEPS = 32                                                                                                 # Max episode length
 CRITIC_LEARNING_RATE = 5e-4                                                                                 # Learning rate for the critic network
 ACTOR_LEARNING_RATE = 1e-3                                                                                  # Learning rate for the policy network
 REPLAY_SIZE = 2**16                                                                                         # Size of the replay buffer
@@ -72,7 +73,7 @@ nb_state = 15
 x_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,-1.57,-1.57,-1.57,-1.57,-1.57,-1.57,-1.57,0])
 x_init_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,0])
 x_max = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,np.inf])
-x_init_max = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,np.inf,(NSTEPS-1)*dt])
+x_init_max = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,(NSTEPS-1)*dt])
 state_norm_arr = np.array([10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, int(NSTEPS*dt)])
 nb_action = 7
 nq = 7
@@ -80,6 +81,7 @@ nv = 7
 nx = 14
 na = 7
 robot = RobotWrapper.BuildFromURDF('/Users/seyoungree/GATO-RL/urdfs/iiwa.urdf', ['/Users/seyoungree/GATO-RL/urdfs/iiwa.urdf'])
+robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
 TARGET_STATE = [0.14720477, -0.72980247,  0.77348994]
 #############################################################################################################
@@ -108,6 +110,17 @@ class Env:
         states = np.random.uniform(self.conf.x_init_min[:-1], self.conf.x_init_max[:-1], size=(batch_size, len(self.conf.x_init_max[:-1])))
         times_int = np.expand_dims(self.conf.dt*np.round(times/self.conf.dt), axis=1)
         return np.hstack((states, times_int))
+
+    def simulate(self, state, action):
+        state_next = np.zeros(self.nx+1)
+        q, v = state[:self.nq], state[self.nq:self.nx]
+        qdd = pin.aba(self.conf.robot.model, self.conf.robot_data, q, v, action)
+        v_new = v + qdd * self.conf.dt
+        q_new = pin.integrate(self.conf.robot.model, q, v_new * dt)
+
+        state_next[:self.nq], state_next[self.nq:self.nx] = np.copy(q_new), np.copy(v_new)
+        state_next[-1] = state[-1] + self.conf.dt
+        return state_next
 
     def get_end_effector_position(self, state, recompute=True):
         ''' Compute end-effector position '''
