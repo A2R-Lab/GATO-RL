@@ -1,11 +1,12 @@
 import sys
+import os
 import importlib
 import numpy as np
 from neural_network import NN
 from replay_buffer import ReplayBuffer
 from rl import RL_AC
 
-PATH_TO_CONF = '/Users/seyoungree/GATO-RL/confs'
+PATH_TO_CONF = os.path.join(os.getcwd(), 'confs')
 sys.path.append(PATH_TO_CONF)
 N_try = 0
 

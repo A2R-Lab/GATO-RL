@@ -2,6 +2,7 @@ import numpy as np
 from pinocchio.robot_wrapper import RobotWrapper
 import torch
 import pinocchio as pin
+import os
 
 ############################################# CACTO PARAMETERS #############################################
 EP_UPDATE = 200                                                                                            # Number of episodes before updating critic and actor
@@ -80,7 +81,8 @@ nq = 7
 nv = 7
 nx = 14
 na = 7
-robot = RobotWrapper.BuildFromURDF('/Users/seyoungree/GATO-RL/urdfs/iiwa.urdf', ['/Users/seyoungree/GATO-RL/urdfs/iiwa.urdf'])
+URDF_PATH = os.path.join(os.getcwd(), 'urdfs/iiwa.urdf')
+robot = RobotWrapper.BuildFromURDF(URDF_PATH, [URDF_PATH])
 robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
 TARGET_STATE = [0.14720477, -0.72980247,  0.77348994]
