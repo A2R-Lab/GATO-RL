@@ -2,7 +2,6 @@ import numpy as np
 from pinocchio.robot_wrapper import RobotWrapper
 import torch
 import pinocchio as pin
-import os
 
 ############################################# CACTO PARAMETERS #############################################
 EP_UPDATE = 200                                                                                            # Number of episodes before updating critic and actor
@@ -124,7 +123,7 @@ class Env:
         state_next[-1] = state[-1] + self.conf.dt
         return state_next
 
-    def get_end_effector_position(self, state, recompute=True):
+    def ee(self, state, recompute=True):
         ''' Compute end-effector position '''
         q = np.array(state[:self.nq])
         RF = self.conf.robot.model.getFrameId(self.conf.end_effector_frame_id)
@@ -139,3 +138,11 @@ class Env:
         r = torch.tensor([self.reward(w, s) for w, s in zip(weights, state)], dtype=torch.float32)
         return torch.reshape(r, (r.shape[0], 1))
     
+    def cost(self, state, action):
+        QD_cost, R_cost = 0.0001, 0.0001
+        total_cost = 0
+        total_cost = 0.5 * QD_cost * np.sum(state[self.nx//2:] ** 2) # velocity cost
+        total_cost += 0.5 * R_cost * np.sum(action ** 2) # control cost
+        total_cost += 0.5 * np.sum((self.ee(state) - self.conf.TARGET_STATE) ** 2) # ee pos cost
+
+        return total_cost
