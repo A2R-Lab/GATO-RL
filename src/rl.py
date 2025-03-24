@@ -183,7 +183,7 @@ class RL_AC:
                 self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.conf.cost_weights_running, self.state_arr[step_counter,:], self.control_arr[step_counter,:])
 
                 # Compute end-effector position
-                self.ee_pos_arr[step_counter+1,:] = self.env.get_end_effector_position(self.state_arr[step_counter+1, :])
+                self.ee_pos_arr[step_counter+1,:] = self.env.ee(self.state_arr[step_counter+1, :])
             rwrd_arr[-1] = self.env.reward(self.conf.cost_weights_terminal, self.state_arr[-1,:])
         else:
             self.state_arr, rwrd_arr = TO_states, -TO_step_cost
@@ -235,7 +235,7 @@ class RL_AC:
 
         # Set initial state and end-effector position
         self.state_arr[0,:] = self.init_rand_state
-        self.ee_pos_arr[0,:] = self.env.get_end_effector_position(self.state_arr[0, :])
+        self.ee_pos_arr[0,:] = self.env.ee(self.state_arr[0, :])
 
         # Initialize array to initialize TO state and control variables
         init_TO_controls = np.zeros((self.NSTEPS_SH, self.conf.nb_action))
