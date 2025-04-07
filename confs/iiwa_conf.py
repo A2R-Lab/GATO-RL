@@ -3,7 +3,7 @@ from pinocchio.robot_wrapper import RobotWrapper
 import torch
 import os
 import pinocchio as pin
-import pinocchio.casadi as cpin
+# import pinocchio.casadi as cpin
 import casadi as ca
 
 ############################################# CACTO PARAMETERS #############################################
@@ -87,7 +87,7 @@ URDF_PATH = os.path.join(os.getcwd(), 'urdfs/iiwa.urdf')
 robot = RobotWrapper.BuildFromURDF(URDF_PATH, [URDF_PATH])
 robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
-TARGET_STATE = [0.14720477, -0.72980247,  0.77348994]
+TARGET_STATE = [0.5, 0.5, 0.5]
 #############################################################################################################
 
 class Env:
@@ -98,13 +98,13 @@ class Env:
         self.nx = conf.nx
         self.nu = conf.na
         self.TARGET_STATE = self.conf.TARGET_STATE
-        self.cmodel = cpin.Model(self.conf.robot.model)
-        self.cdata = self.cmodel.createData()
+        # self.cmodel = cpin.Model(self.conf.robot.model)
+        # self.cdata = self.cmodel.createData()
         cx = ca.SX.sym("x",self.conf.nx,1)
         cu = ca.SX.sym("u",self.conf.na,1)
-        self.x_next = ca.Function('x_next', [cx, cu], [self.cpin_simulate(cx,cu)])
-        self.ee_p = ca.Function('ee_p', [cx], [self.cdata.oMf[self.conf.robot.model.getFrameId(self.conf.end_effector_frame_id)].translation])
-        self.cost = ca.Function('cost', [cx,cu], [self.cost(cx,cu)])
+        # self.x_next = ca.Function('x_next', [cx, cu], [self.cpin_simulate(cx,cu)])
+        # self.ee_p = ca.Function('ee_p', [cx], [self.cdata.oMf[self.conf.robot.model.getFrameId(self.conf.end_effector_frame_id)].translation])
+        # self.cost = ca.Function('cost', [cx,cu], [self.cost(cx,cu)])
 
     def reset(self):
         ''' Choose initial state uniformly at random '''
@@ -136,6 +136,17 @@ class Env:
         return state_next
     
 
+    def step(self, state, action):
+        ''' Return next state and reward '''
+        # compute next state
+        state_next = self.simulate(state, action)
+
+        # compute reward
+        reward = self.reward( state, action)
+
+        return (state_next, reward)
+    
+
     def cpin_simulate(self, state, action):
         q, v = state[:self.nq], state[self.nq:self.nx]
         qdd = cpin.aba(self.cmodel, self.cdata, q, v, action)
@@ -153,12 +164,12 @@ class Env:
         H = self.conf.robot.framePlacement(q.astype(np.float32), RF, recompute)
         return H.translation
     
-    def reward(self, weights, state, action=None):
+    def reward(self, state, action=None):
         return 0
     
-    def reward_batch(self, weights, state, action):
+    def reward_batch(self, state, action):
         ''' Compute reward using tensors. Batch-wise computation '''
-        r = torch.tensor([self.reward(w, s) for w, s in zip(weights, state)], dtype=torch.float32)
+        r = torch.tensor([self.reward(s) for s in state], dtype=torch.float32)
         return torch.reshape(r, (r.shape[0], 1))
     
     def cost(self, state, action):

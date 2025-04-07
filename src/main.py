@@ -5,6 +5,7 @@ import numpy as np
 from neural_network import NN
 from replay_buffer import ReplayBuffer
 from rl import RL_AC
+from opt_control.traj_opt import TO
 
 PATH_TO_CONF = os.path.join(os.getcwd(), 'confs')
 sys.path.append(PATH_TO_CONF)
@@ -18,17 +19,12 @@ def compute_sample(args):
         return None
 
     # Solve TO problem
-    TO_controls, TO_states, success_flag, TO_ee_pos_arr, TO_step_cost, dVdx = TrOp.TO_Solve(init_rand_state, init_TO_states, init_TO_controls, NSTEPS_SH)
-    if success_flag == 0:
-        return None
+    TO_states, TO_controls, TO_ee_pos_arr = TrOp.TO_Solve(init_rand_state, init_TO_states, init_TO_controls, NSTEPS_SH)
     
     # Collect experiences 
-    state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr  = rlac.RL_Solve(TO_controls, TO_states, TO_step_cost)
+    state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr  = rlac.RL_Solve(TO_controls, TO_states)
 
-    if conf.env_RL == 0:
-        RL_ee_pos_arr = TO_ee_pos_arr
-
-    return NSTEPS_SH, TO_controls, TO_ee_pos_arr, dVdx, state_arr.tolist(), partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr
+    return NSTEPS_SH, TO_controls, TO_ee_pos_arr, state_arr.tolist(), partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr
 
 if __name__ == '__main__':
     conf = importlib.import_module('iiwa_conf')
@@ -36,6 +32,7 @@ if __name__ == '__main__':
     nn = NN(env, conf)
     buffer = ReplayBuffer(conf)
     rlac = RL_AC(env, nn, conf, N_try)
+    TrOp = TO(env, conf)
 
     rlac.setup_model()
 
@@ -52,8 +49,8 @@ if __name__ == '__main__':
             result = compute_sample((ep, init_rand_state[i, :]))
             tmp.append(result)
         tmp = [x for x in tmp if x is not None]
-        NSTEPS_SH, TO_controls, ee_pos_arr_TO, dVdx, state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, ee_pos_arr_RL = zip(*tmp)
-        buffer.add(state_arr, partial_reward_to_go_arr, state_next_rollout_arr, dVdx, done_arr, term_arr)
+        NSTEPS_SH, TO_controls, ee_pos_arr_TO, state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, ee_pos_arr_RL = zip(*tmp)
+        buffer.add(state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, term_arr)
 
     
 

@@ -1,5 +1,12 @@
 import numpy as np
 import casadi as ca
+import sys
+import os
+sys.path.append(os.path.abspath("/Users/seyoungree/GATO-RL/sqpcpu"))
+from pinocchio_template import thneed
+sys.path.append(os.path.abspath("/Users/seyoungree/GATO-RL/sqpcpu/build"))
+import pysqpcpu
+
 
 class TO:
     def __init__(self, env, conf, w_S=0):
@@ -50,15 +57,29 @@ class TO:
 
         return success_flag, TO_controls, TO_states, TO_ee_pos_arr, TO_total_cost, TO_step_cost
         
+
+    def TO_Solve(self, ICS_state, init_TO_states, init_TO_controls, T):
+        qpiters = 5
+        N = self.conf.NSTEPS
+        dt = self.conf.dt
+        pyt = thneed("/Users/seyoungree/GATO-RL/sqpcpu/urdfs/iiwa.urdf", N=N, dt=dt, max_qp_iters=qpiters)
+        xs = np.zeros(pyt.nx)  # Initial state
+        eepos_g = 0.5 * np.ones(3 * pyt.N)   # End-effector position goals
+        pyt.setxs(xs)
+
+        num_iters = 100
+        # Run SQP optimization
+        for i in range(num_iters):
+            pyt.sqp(xs, eepos_g)
+    
+        X = np.array([pyt.XU[i * (self.conf.nx + self.conf.na) : i * (self.conf.nx + self.conf.na) + self.conf.nx] for i in range(N)]) 
+        U = np.array([pyt.XU[i * (self.conf.nx + self.conf.na) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.na)] for i in range(N-1)])
+        print(pyt.XU.shape, X.shape, U.shape)
+        ee_pos_list = []
+        for k in range(pyt.N):
+            XU_k = pyt.XU[k * (self.conf.nx + self.conf.na) : k * (self.conf.nx + self.conf.na) + self.conf.nq]
+            ee_pos = pyt.eepos(XU_k)
+            ee_pos_list.append(ee_pos)
+        ee_pos_arr = np.array(ee_pos_list)
         
-
-    def TO_solve(self, ICS_state, init_TO_states, init_TO_controls, T):
-        success_flag, TO_controls, TO_states, TO_ee_pos_arr, _, TO_step_cost = self.TO_cpu_solve(ICS_state, init_TO_states, init_TO_controls, T)
-        print(TO_states, TO_controls)
-        if success_flag == 0:
-            return None, None, success_flag, None, None, None 
-
-        # Add the last state component (time)
-        TO_states = np.concatenate((TO_states, init_TO_states[0,-1] + np.transpose(self.conf.dt*np.array([range(T+1)]))), axis=1)
-            
-        return TO_controls, TO_states, success_flag, TO_ee_pos_arr, TO_step_cost
+        return X, U, ee_pos_arr

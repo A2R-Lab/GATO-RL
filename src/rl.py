@@ -163,13 +163,13 @@ class RL_AC:
         file.write(f"Target Update times - Avg: {np.mean(times_update_target)}; Max:{np.max(times_update_target)}; Min: {np.min(times_update_target)}\n")
         return update_step_counter
     
-    def RL_Solve(self, TO_controls, TO_states, TO_step_cost):
+    def RL_Solve(self, TO_controls, TO_states):
         ''' Solve RL problem '''
-        ep_return = 0                                                                 # Initialize the return
-        rwrd_arr = np.empty(self.NSTEPS_SH+1)                                         # Reward array
-        state_next_rollout_arr = np.zeros((self.NSTEPS_SH+1, self.conf.nb_state))     # Next state array
-        partial_reward_to_go_arr = np.empty(self.NSTEPS_SH+1)                         # Partial cost-to-go array
-        total_reward_to_go_arr = np.empty(self.NSTEPS_SH+1)                           # Total cost-to-go array
+        ep_return = 0                                                               # Initialize the return
+        rwrd_arr = np.empty(self.NSTEPS_SH)                                         # Reward array
+        state_next_rollout_arr = np.zeros((self.NSTEPS_SH, self.conf.nb_state))     # Next state array
+        partial_reward_to_go_arr = np.empty(self.NSTEPS_SH)                         # Partial cost-to-go array
+        total_reward_to_go_arr = np.empty(self.NSTEPS_SH)                           # Total cost-to-go array
         term_arr = np.zeros(self.NSTEPS_SH+1)                                         # Episode-termination flag array
         term_arr[-1] = 1
         done_arr = np.zeros(self.NSTEPS_SH+1)                                         # Episode-MC-termination flag array
@@ -177,35 +177,33 @@ class RL_AC:
         # START RL EPISODE
         self.control_arr = TO_controls # action clipped in TO
         
-        if self.conf.env_RL:
-            for step_counter in range(self.NSTEPS_SH):
-                # Simulate actions and retrieve next state and compute reward
-                self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.conf.cost_weights_running, self.state_arr[step_counter,:], self.control_arr[step_counter,:])
+        for step_counter in range(self.NSTEPS_SH-1):
+            # Simulate actions and retrieve next state and compute reward
+            print(f'{step_counter}/{self.NSTEPS_SH-1}', self.state_arr[step_counter,:].shape, self.state_arr.shape, self.control_arr[step_counter,:].shape)
+            self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter,:])
 
-                # Compute end-effector position
-                self.ee_pos_arr[step_counter+1,:] = self.env.ee(self.state_arr[step_counter+1, :])
-            rwrd_arr[-1] = self.env.reward(self.conf.cost_weights_terminal, self.state_arr[-1,:])
-        else:
-            self.state_arr, rwrd_arr = TO_states, -TO_step_cost
+            # Compute end-effector position
+            self.ee_pos_arr[step_counter+1,:] = self.env.ee(self.state_arr[step_counter+1, :])
+        rwrd_arr[-1] = self.env.reward(self.state_arr[-1,:])
 
         ep_return = sum(rwrd_arr)
 
         # Store transition after computing the (partial) cost-to go when using n-step TD (from 0 to Monte Carlo)
-        for i in range(self.NSTEPS_SH+1):
+        for i in range(self.NSTEPS_SH):
             # set final lookahead step depending on whether Monte Cartlo or TD(n) is used
             if self.conf.MC:
-                final_lookahead_step = self.NSTEPS_SH
+                final_lookahead_step = self.NSTEPS_SH-1
                 done_arr[i] = 1 
             else:
-                final_lookahead_step = min(i+self.conf.nsteps_TD_N, self.NSTEPS_SH)
-                if final_lookahead_step == self.NSTEPS_SH:
+                final_lookahead_step = min(i+self.conf.nsteps_TD_N, self.NSTEPS_SH-1)
+                if final_lookahead_step == self.NSTEPS_SH-1:
                     done_arr[i] = 1 
                 else:
                     state_next_rollout_arr[i,:] = self.state_arr[final_lookahead_step+1,:]
             
             # Compute the partial and total cost to go
             partial_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:final_lookahead_step+1]))
-            total_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:self.NSTEPS_SH+1]))
+            total_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:self.NSTEPS_SH]))
 
         return self.state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, self.ee_pos_arr
     
