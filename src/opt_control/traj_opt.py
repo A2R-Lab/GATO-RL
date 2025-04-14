@@ -1,11 +1,6 @@
 import numpy as np
 import casadi as ca
-import sys
-import os
-sys.path.append(os.path.abspath("/Users/seyoungree/GATO-RL/sqpcpu"))
-from pinocchio_template import thneed
-sys.path.append(os.path.abspath("/Users/seyoungree/GATO-RL/sqpcpu/build"))
-import pysqpcpu
+from .pinocchio_template import thneed
 
 
 class TO:
@@ -62,7 +57,7 @@ class TO:
         qpiters = 5
         N = self.conf.NSTEPS
         dt = self.conf.dt
-        pyt = thneed("/Users/seyoungree/GATO-RL/sqpcpu/urdfs/iiwa.urdf", N=N, dt=dt, max_qp_iters=qpiters)
+        pyt = thneed("urdfs/iiwa.urdf", N=N, dt=dt, max_qp_iters=qpiters)
         xs = np.zeros(pyt.nx)  # Initial state
         eepos_g = 0.5 * np.ones(3 * pyt.N)   # End-effector position goals
         pyt.setxs(xs)

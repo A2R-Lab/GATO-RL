@@ -44,11 +44,12 @@ print(init_TO_controls)
 
 # Initialize and test the TO_solve method
 TO_inst = TO(env, conf)
-TO_controls, TO_states, success_flag, TO_ee_pos_arr, TO_step_cost, _ = TO_inst.TO_solve(ICS_state, init_TO_states, init_TO_controls, T)
+# TO_controls, TO_states, success_flag, TO_ee_pos_arr, TO_step_cost, _ = TO_inst.TO_Solve(ICS_state, init_TO_states, init_TO_controls, T)
+TO_controls, TO_states, TO_ee_pos_arr = TO_inst.TO_Solve(ICS_state, init_TO_states, init_TO_controls, T)
 
 # Print results for inspection
-print("Success Flag:", success_flag)
+# print("Success Flag:", success_flag)
 print("TO Controls:\n", TO_controls)
 print("TO States:\n", TO_states)
 print("TO End-Effector Positions:\n", TO_ee_pos_arr)
-print("TO Step Costs:", TO_step_cost)
+# print("TO Step Costs:", TO_step_cost)
