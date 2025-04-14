@@ -207,26 +207,19 @@ class NN:
 
         return result    
     
-    def compute_critic_grad(self, critic_model, target_critic, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, dVdx_batch, d_batch, weights_batch):
+    def compute_critic_grad(self, critic_model, target_critic, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch):
         ''' Compute the gradient of the critic NN. Does not return the critic gradients since 
         they will be present in .grad attributes of the critic_model after execution.'''
         #NOTE: regularization added#
         #Tested Successfully#
+        self.conf.MC = True
         reward_to_go_batch = partial_reward_to_go_batch if self.conf.MC else partial_reward_to_go_batch + (1 - d_batch) * self.eval(target_critic, state_next_rollout_batch)
 
         critic_model.zero_grad()
-        if self.w_S != 0:
-            state_batch.requires_grad_(True)
-            critic_value = self.eval(critic_model, state_batch)
-            der_critic_value = torch.autograd.grad(outputs=critic_value, inputs=state_batch, grad_outputs=torch.ones_like(critic_value), create_graph=True)[0]
-            critic_loss_v = self.MSE(reward_to_go_batch, critic_value, weights=weights_batch)
-            critic_loss_der = self.MSE(self.custom_logarithm(dVdx_batch[:,:-1]), self.custom_logarithm(der_critic_value[:,:-1]), weights=weights_batch) # dV/dt not computed and so not used in the update
-            critic_loss = critic_loss_der + self.w_S*critic_loss_v
-        else:
-            critic_value = self.eval(critic_model, state_batch)
-            critic_loss = self.MSE(reward_to_go_batch, critic_value, weights=weights_batch)
+        critic_value = self.eval(critic_model, state_batch)
+        critic_loss = self.MSE(reward_to_go_batch, critic_value, weights=weights_batch)
         
-        total_loss = critic_loss #+ self.compute_reg_loss(critic_model, False)
+        total_loss = critic_loss
         critic_model.zero_grad()
         total_loss.backward()
 
@@ -248,10 +241,8 @@ class NN:
         actions = self.eval(actor_model, state_batch)
 
         # Both take into account normalization, ds_next_da is the gradient of the dynamics w.r.t. policy actions (ds'_da)
-        act_np = actions.detach().cpu().numpy()
-        
+        act_np = actions.detach().cpu().numpy()        
         state_next_tf, ds_next_da = self.env.simulate_batch(state_batch.detach().cpu().numpy(), act_np), self.env.derivative_batch(state_batch.detach().cpu().numpy(), act_np)
-        
         state_next_tf = state_next_tf.clone().detach().to(dtype=torch.float32).requires_grad_(True)
         ds_next_da = ds_next_da.clone().detach().to(dtype=torch.float32).requires_grad_(True)
 
@@ -263,18 +254,10 @@ class NN:
                                         grad_outputs=torch.ones_like(critic_value_next),
                                         create_graph=True)[0]
 
-        cost_weights_terminal_reshaped = torch.tensor(self.conf.cost_weights_terminal, dtype=torch.float32).reshape(1, -1)
-        cost_weights_running_reshaped = torch.tensor(self.conf.cost_weights_running, dtype=torch.float32).reshape(1, -1)
-
         # Compute rewards
         state_batch_np = state_batch.detach().cpu().numpy()
-        
-        temp1 = torch.matmul(torch.tensor(term_batch, dtype=torch.float32), cost_weights_terminal_reshaped)
-        
-        temp2 = torch.matmul(torch.tensor(1 - term_batch, dtype=torch.float32), cost_weights_running_reshaped)
-        
-        rewards_tf = self.env.reward_batch(temp1 + temp2, state_batch_np, actions)
-        #print(rewards_tf.shape)
+        rewards_tf = self.env.reward_batch(state_batch, actions)
+
         # dr_da = gradient of reward r(s,a) w.r.t. policy's action a
         dr_da = torch.autograd.grad(outputs=rewards_tf, inputs=actions,
                                     grad_outputs=torch.ones_like(rewards_tf),

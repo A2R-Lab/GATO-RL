@@ -98,12 +98,12 @@ class RL_AC:
         else:
             self.target_critic.load_state_dict(self.critic_model.state_dict())   
 
-    def update(self, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, dVdx_batch, d_batch, term_batch, weights_batch, batch_size=None):
+    def update(self, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, term_batch, weights_batch, batch_size=None):
         ''' Update both critic and actor '''
 
         # Update the critic by backpropagating the gradients
         self.critic_optimizer.zero_grad()
-        reward_to_go_batch, critic_value, target_critic_value = self.NN.compute_critic_grad(self.critic_model, self.target_critic, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, dVdx_batch, d_batch, weights_batch)
+        reward_to_go_batch, critic_value, target_critic_value = self.NN.compute_critic_grad(self.critic_model, self.target_critic, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch)
         self.critic_optimizer.step()  # Update the weights
         
         # Update the actor by backpropagating the gradients
@@ -124,7 +124,7 @@ class RL_AC:
             for target_param, param in zip(target_weights, weights):
                 target_param.data.copy_(param.data * tau + target_param.data * (1 - tau))
 
-    def learn_and_update(self, update_step_counter, buffer, ep, file):
+    def learn_and_update(self, update_step_counter, buffer, ep):
         #Tested Successfully# Although only for one iteration (?)
         ''' Sample experience and update buffer priorities and NNs '''
         times_sample = np.zeros(int(self.conf.UPDATE_LOOPS[ep]))
@@ -133,18 +133,15 @@ class RL_AC:
         for i in range(int(self.conf.UPDATE_LOOPS[ep])):
             # Sample batch of transitions from the buffer
             st = time.time()
-            state_batch, partial_reward_to_go_batch, state_next_rollout_batch, dVdx_batch, d_batch, term_batch, weights_batch, batch_idxes = buffer.sample()
+            state_batch, partial_reward_to_go_batch, state_next_rollout_batch, d_batch, term_batch, weights_batch, batch_idxes = buffer.sample()
             et = time.time()
             times_sample[i] = et-st
             
             # Update both critic and actor
             st = time.time()
-            reward_to_go_batch, critic_value, target_critic_value = self.update(state_batch, state_next_rollout_batch, partial_reward_to_go_batch, dVdx_batch, d_batch, term_batch, weights_batch)
+            reward_to_go_batch, critic_value, target_critic_value = self.update(state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, term_batch, weights_batch)
             et = time.time()
             times_update[i] = et-st
-            # Update buffer priorities
-            if self.conf.prioritized_replay_alpha != 0:
-                buffer.update_priorities(batch_idxes, reward_to_go_batch, critic_value, target_critic_value)
 
             # Update target critic
             if not self.conf.MC:
@@ -155,21 +152,18 @@ class RL_AC:
 
             update_step_counter += 1
 
-            # Plot rollouts and save the NNs every conf.save_interval training episodes
-            if update_step_counter % self.conf.save_interval == 0:
-                self.RL_save_weights(update_step_counter)
-        file.write(f"Sample times - Avg: {np.mean(times_sample)}; Max:{np.max(times_sample)}; Min: {np.min(times_sample)}\n")
-        file.write(f"Update times - Avg: {np.mean(times_update)}; Max:{np.max(times_update)}; Min: {np.min(times_update)}\n")
-        file.write(f"Target Update times - Avg: {np.mean(times_update_target)}; Max:{np.max(times_update_target)}; Min: {np.min(times_update_target)}\n")
+        print(f"Sample times - Avg: {np.mean(times_sample)}; Max:{np.max(times_sample)}; Min: {np.min(times_sample)}\n")
+        print(f"Update times - Avg: {np.mean(times_update)}; Max:{np.max(times_update)}; Min: {np.min(times_update)}\n")
+        print(f"Target Update times - Avg: {np.mean(times_update_target)}; Max:{np.max(times_update_target)}; Min: {np.min(times_update_target)}\n")
         return update_step_counter
     
     def RL_Solve(self, TO_controls, TO_states):
         ''' Solve RL problem '''
         ep_return = 0                                                               # Initialize the return
-        rwrd_arr = np.empty(self.NSTEPS_SH)                                         # Reward array
-        state_next_rollout_arr = np.zeros((self.NSTEPS_SH, self.conf.nb_state))     # Next state array
-        partial_reward_to_go_arr = np.empty(self.NSTEPS_SH)                         # Partial cost-to-go array
-        total_reward_to_go_arr = np.empty(self.NSTEPS_SH)                           # Total cost-to-go array
+        rwrd_arr = np.empty(self.NSTEPS_SH+1)                                         # Reward array
+        state_next_rollout_arr = np.zeros((self.NSTEPS_SH+1, self.conf.nb_state))     # Next state array
+        partial_reward_to_go_arr = np.empty(self.NSTEPS_SH+1)                         # Partial cost-to-go array
+        total_reward_to_go_arr = np.empty(self.NSTEPS_SH+1)                           # Total cost-to-go array
         term_arr = np.zeros(self.NSTEPS_SH+1)                                         # Episode-termination flag array
         term_arr[-1] = 1
         done_arr = np.zeros(self.NSTEPS_SH+1)                                         # Episode-MC-termination flag array
@@ -177,10 +171,16 @@ class RL_AC:
         # START RL EPISODE
         self.control_arr = TO_controls # action clipped in TO
         
-        for step_counter in range(self.NSTEPS_SH-1):
+        for step_counter in range(self.NSTEPS_SH):
             # Simulate actions and retrieve next state and compute reward
-            print(f'{step_counter}/{self.NSTEPS_SH-1}', self.state_arr[step_counter,:].shape, self.state_arr.shape, self.control_arr[step_counter,:].shape)
-            self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter,:])
+            if step_counter == self.NSTEPS_SH-1:
+                self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter-1,:])
+                print(f'{step_counter}/{self.NSTEPS_SH}', self.state_arr[step_counter,:].shape, self.state_arr.shape, self.control_arr[step_counter-1,:].shape)
+
+            else:
+                self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter,:])
+                print(f'{step_counter}/{self.NSTEPS_SH}', self.state_arr[step_counter,:].shape, self.state_arr.shape, self.control_arr[step_counter,:].shape)
+
 
             # Compute end-effector position
             self.ee_pos_arr[step_counter+1,:] = self.env.ee(self.state_arr[step_counter+1, :])
@@ -189,21 +189,21 @@ class RL_AC:
         ep_return = sum(rwrd_arr)
 
         # Store transition after computing the (partial) cost-to go when using n-step TD (from 0 to Monte Carlo)
-        for i in range(self.NSTEPS_SH):
+        for i in range(self.NSTEPS_SH+1):
             # set final lookahead step depending on whether Monte Cartlo or TD(n) is used
             if self.conf.MC:
-                final_lookahead_step = self.NSTEPS_SH-1
+                final_lookahead_step = self.NSTEPS_SH
                 done_arr[i] = 1 
             else:
-                final_lookahead_step = min(i+self.conf.nsteps_TD_N, self.NSTEPS_SH-1)
-                if final_lookahead_step == self.NSTEPS_SH-1:
+                final_lookahead_step = min(i+self.conf.nsteps_TD_N, self.NSTEPS_SH)
+                if final_lookahead_step == self.NSTEPS_SH:
                     done_arr[i] = 1 
                 else:
                     state_next_rollout_arr[i,:] = self.state_arr[final_lookahead_step+1,:]
             
             # Compute the partial and total cost to go
             partial_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:final_lookahead_step+1]))
-            total_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:self.NSTEPS_SH]))
+            total_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:self.NSTEPS_SH+1]))
 
         return self.state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, self.ee_pos_arr
     

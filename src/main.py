@@ -39,6 +39,7 @@ if __name__ == '__main__':
     # Initialize arrays to store the reward history of each episode and the average reward history of last 100 episodes
     ep_arr_idx = 0
     ep_reward_arr = np.zeros(conf.NEPISODES-ep_arr_idx)*np.nan
+    update_step_counter = 0
 
     for ep in range(conf.NLOOPS):
         init_rand_state = env.reset_batch(conf.EP_UPDATE)
@@ -49,8 +50,21 @@ if __name__ == '__main__':
             result = compute_sample((ep, init_rand_state[i, :]))
             tmp.append(result)
         tmp = [x for x in tmp if x is not None]
+        print(f"Compute_sample {len(tmp)}/{conf.EP_UPDATE} success")
         NSTEPS_SH, TO_controls, ee_pos_arr_TO, state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, ee_pos_arr_RL = zip(*tmp)
         buffer.add(state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, term_arr)
+
+
+        # Update NNs
+        update_step_counter = rlac.learn_and_update(update_step_counter, buffer, ep)
+        ep_reward_arr[ep_arr_idx:ep_arr_idx+len(tmp)] = ep_return
+        ep_arr_idx += len(tmp)
+
+        for i in range(len(tmp)):
+            print("Episode  {}  --->   Return = {}".format(ep*len(tmp) + i, ep_return[i]))
+
+        if update_step_counter > conf.NUPDATES:
+            break
 
     
 
