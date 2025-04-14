@@ -12,14 +12,14 @@ class ReplayBuffer(object):
         '''
 
         self.conf = conf
-        self.storage_mat = np.zeros((conf.REPLAY_SIZE, conf.nb_state + 1 + conf.nb_state + conf.nb_state + 1 + 1))
+        self.storage_mat = np.zeros((conf.REPLAY_SIZE, conf.nb_state + 1 + conf.nb_state + 1 + 1))
         self.next_idx = 0
         self.full = 0
         self.exp_counter = np.zeros(conf.REPLAY_SIZE)
 
-    def add(self, obses_t, rewards, obses_t1, dVdxs, dones, terms):
+    def add(self, obses_t, rewards, obses_t1, dones, terms):
         ''' Add transitions to the buffer '''
-        data = self.concatenate_sample(obses_t, rewards, obses_t1, dVdxs, dones, terms)
+        data = self.concatenate_sample(obses_t, rewards, obses_t1, dones, terms)
 
         if len(data) + self.next_idx > self.conf.REPLAY_SIZE:
             self.storage_mat[self.next_idx:,:] = data[:self.conf.REPLAY_SIZE-self.next_idx,:]
@@ -42,38 +42,34 @@ class ReplayBuffer(object):
         obses_t = self.storage_mat[idxes, :self.conf.nb_state]
         rewards = self.storage_mat[idxes, self.conf.nb_state:self.conf.nb_state+1]
         obses_t1 = self.storage_mat[idxes, self.conf.nb_state+1:self.conf.nb_state*2+1]
-        dVdxs = self.storage_mat[idxes, self.conf.nb_state*2+1:self.conf.nb_state*3+1]
-        dones = self.storage_mat[idxes, self.conf.nb_state*3+1:self.conf.nb_state*3+2]
-        terms = self.storage_mat[idxes, self.conf.nb_state*3+2:self.conf.nb_state*3+3]
+        dones = self.storage_mat[idxes, self.conf.nb_state*2+1:self.conf.nb_state*3+1]
+        terms = self.storage_mat[idxes, self.conf.nb_state*3+1:self.conf.nb_state*3+2]
 
         # Priorities not used
         weights = np.ones((self.conf.BATCH_SIZE,1))
         batch_idxes = None
 
         # Convert the sample in tensor
-        obses_t, rewards, obses_t1, dVdxs, dones, weights = self.convert_sample_to_tensor(obses_t, rewards, obses_t1, dVdxs, dones, weights)
+        obses_t, rewards, obses_t1, dones, weights = self.convert_sample_to_tensor(obses_t, rewards, obses_t1, dones, weights)
         
-        return obses_t, rewards, obses_t1, dVdxs, dones, terms, weights, batch_idxes
+        return obses_t, rewards, obses_t1, dones, terms, weights, batch_idxes
 
-    def concatenate_sample(self, obses_t, rewards, obses_t1, dVdxs, dones, terms):
+    def concatenate_sample(self, obses_t, rewards, obses_t1, dones, terms):
         ''' Convert batch of transitions into a tensor '''
         obses_t = np.concatenate(obses_t, axis=0)
         rewards = np.concatenate(rewards, axis=0)                                 
         obses_t1 = np.concatenate(obses_t1, axis=0)
-        dVdxs = np.concatenate(dVdxs, axis=0)
         dones = np.concatenate(dones, axis=0)
-        terms = np.concatenate(terms, axis=0)
-        
-        return np.concatenate((obses_t, rewards.reshape(-1,1), obses_t1, dVdxs, dones.reshape(-1,1), terms.reshape(-1,1)),axis=1)
+        terms = np.concatenate(terms, axis=0)        
+        return np.concatenate((obses_t, rewards.reshape(-1,1), obses_t1, dones.reshape(-1,1), terms.reshape(-1,1)),axis=1)
     
 
-    def convert_sample_to_tensor(self, obses_t, rewards, obses_t1, dVdxs, dones, weights):
+    def convert_sample_to_tensor(self, obses_t, rewards, obses_t1, dones, weights):
         ''' Convert batch of transitions into a tensor using PyTorch '''
         obses_t = torch.tensor(obses_t, dtype=torch.float32)
         rewards = torch.tensor(rewards, dtype=torch.float32)
         obses_t1 = torch.tensor(obses_t1, dtype=torch.float32)
-        dVdxs = torch.tensor(dVdxs, dtype=torch.float32)
         dones = torch.tensor(dones, dtype=torch.float32)
         weights = torch.tensor(weights, dtype=torch.float32)
         
-        return obses_t, rewards, obses_t1, dVdxs, dones, weights
+        return obses_t, rewards, obses_t1, dones, weights
