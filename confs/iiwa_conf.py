@@ -71,7 +71,7 @@ prioritized_replay_eps = 1e-2                                                   
 fresh_factor = 0.95                                                                                         # Refresh factor
 
 ############################################# ROBOT PARAMETERS ##############################################
-dt = 0.001
+dt = 0.1
 nb_state = 15
 x_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,-1.57,-1.57,-1.57,-1.57,-1.57,-1.57,-1.57,0])
 x_init_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,0])
@@ -135,6 +135,11 @@ class Env:
         state_next[-1] = state[-1] + self.conf.dt
         return state_next
     
+    def simulate_batch(self, state, action):
+        ''' Simulate dynamics using tensors and compute its gradient w.r.t control. Batch-wise computation '''        
+        state_next = np.array([self.simulate(s, a) for s, a in zip(state, action)])
+
+        return torch.tensor(state_next, dtype=torch.float32)
 
     def step(self, state, action):
         ''' Return next state and reward '''
@@ -146,16 +151,29 @@ class Env:
 
         return (state_next, reward)
     
+    def derivative(self, state, action):
+        ''' Compute the derivative '''
+        # Create robot model in Pinocchio with q_init as initial configuration
+        q_init = state[:self.nq]
+        v_init = state[self.nq:self.nx]
 
-    def cpin_simulate(self, state, action):
-        q, v = state[:self.nq], state[self.nq:self.nx]
-        qdd = cpin.aba(self.cmodel, self.cdata, q, v, action)
-        v_new = v + qdd * self.conf.dt
-        q_new = cpin.integrate(self.cmodel, q, v_new * dt)
+        # Dynamics gradient w.r.t control (1st order euler)
+        pin.computeABADerivatives(self.conf.robot.model, self.conf.robot.data, np.copy(q_init).astype(np.float32), np.copy(v_init).astype(np.float32), action.astype(np.float32))       
 
-        state_new = ca.vertcat(q_new, v_new)
-        return state_new
+        Fu = np.zeros((self.nx+1, self.nu))
+        Fu[self.nv:-1, :] = self.conf.robot.data.Minv
+        Fu[:self.nx, :] *= self.conf.dt
 
+        if self.conf.NORMALIZE_INPUTS:
+            Fu[:-1] *= (1/self.conf.state_norm_arr[:-1,None])  
+
+        return Fu
+    
+    def derivative_batch(self, state, action):
+        ''' Simulate dynamics using tensors and compute its gradient w.r.t control. Batch-wise computation '''        
+        Fu = np.array([self.derivative(s, a) for s, a in zip(state, action)])
+
+        return torch.tensor(Fu, dtype=torch.float32)
 
     def ee(self, state, recompute=True):
         ''' Compute end-effector position '''
@@ -164,25 +182,45 @@ class Env:
         H = self.conf.robot.framePlacement(q.astype(np.float32), RF, recompute)
         return H.translation
     
-    def reward(self, state, action=None):
-        return 0
-    
-    def reward_batch(self, state, action):
-        ''' Compute reward using tensors. Batch-wise computation '''
-        r = torch.tensor([self.reward(s) for s in state], dtype=torch.float32)
-        return torch.reshape(r, (r.shape[0], 1))
-    
-    def cost(self, state, action):
-        use_cpin = True
-        QD_cost, R_cost = 0.0001, 0.0001
-        if not use_cpin:
-            total_cost = 0.5 * QD_cost * np.sum(state[self.nx//2:] ** 2) # velocity cost
-            total_cost += 0.5 * R_cost * np.sum(action ** 2) # v`` control cost
-            total_cost += 0.5 * np.sum((self.ee(state) - self.conf.TARGET_STATE) ** 2) # ee pos cost
-        else:
-            ee_pos = self.ee_p(state)
-            total_cost = 0.5 * QD_cost * ca.norm_2(state[self.nx//2:]) # velocity cost
-            total_cost += 0.5 * R_cost * ca.norm_2(action) # control cost
-            total_cost += 0.5 * ca.norm_2(self.ee_p(state) - self.conf.TARGET_STATE) # ee pos cost
+    def ee_batch(self, state_batch):
+        ''' Compute end-effector positions for a batch of states (no gradients) '''
+        ee_positions = []
+        RF = self.conf.robot.model.getFrameId(self.conf.end_effector_frame_id)
 
+        for state in state_batch:
+            q = np.array(state[:self.nq])
+            H = self.conf.robot.framePlacement(q.astype(np.float32), RF)
+            ee_positions.append(torch.tensor(H.translation, dtype=torch.float32))
+
+        return torch.stack(ee_positions, dim=0)
+
+    def reward(self, state, action=None):
+        QD_cost, R_cost = 0.0001, 0.0001
+        total_cost = -0.5 * QD_cost * np.sum(state[self.nx//2:] ** 2) # velocity cost
+        total_cost += -0.5 * np.sum((self.ee(state) - self.conf.TARGET_STATE) ** 2) # ee pos cost
+
+        if action is not None:
+            total_cost += -0.5 * R_cost * np.sum(action ** 2) # control cost
+
+        return total_cost
+    
+    def reward_batch(self, state_batch, action_batch=None):
+        ''' Compute reward using tensors. Batch-wise computation '''
+        QD_cost, R_cost = 0.0001, 0.0001
+        total_cost = -0.5 * QD_cost * torch.sum(state_batch[:, self.nx//2:]**2, dim=1) # velocity cost
+
+        ee_pos = self.ee_batch(state_batch)
+        target = torch.tensor(self.conf.TARGET_STATE, dtype=ee_pos.dtype, device=ee_pos.device)
+        total_cost += -0.5 * torch.sum((ee_pos - target) ** 2, dim=1) # ee pos cost
+
+        if action_batch is not None:
+            total_cost += -0.5 * R_cost * torch.sum(action_batch ** 2, dim=1)
+
+        return total_cost.unsqueeze(1)
+
+    def cost(self, state, action):
+        QD_cost, R_cost = 0.0001, 0.0001
+        total_cost = 0.5 * QD_cost * np.sum(state[self.nx//2:] ** 2) # velocity cost
+        total_cost += 0.5 * R_cost * np.sum(action ** 2) # v`` control cost
+        total_cost += 0.5 * np.sum((self.ee(state) - self.conf.TARGET_STATE) ** 2) # ee pos cost
         return total_cost
