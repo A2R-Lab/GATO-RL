@@ -19,7 +19,7 @@ def compute_sample(args):
         return None
 
     # Solve TO problem
-    TO_states, TO_controls, TO_ee_pos_arr = TrOp.TO_Solve(init_rand_state, init_TO_states, init_TO_controls, NSTEPS_SH)
+    TO_states, TO_controls, TO_ee_pos_arr = TrOp.TO_Solve(init_rand_state, init_TO_states, init_TO_controls)
     
     # Collect experiences 
     state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr  = rlac.RL_Solve(TO_controls, TO_states)

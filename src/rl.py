@@ -175,12 +175,9 @@ class RL_AC:
             # Simulate actions and retrieve next state and compute reward
             if step_counter == self.NSTEPS_SH-1:
                 self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter-1,:])
-                print(f'{step_counter}/{self.NSTEPS_SH}', self.state_arr[step_counter,:].shape, self.state_arr.shape, self.control_arr[step_counter-1,:].shape)
 
             else:
                 self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter,:])
-                print(f'{step_counter}/{self.NSTEPS_SH}', self.state_arr[step_counter,:].shape, self.state_arr.shape, self.control_arr[step_counter,:].shape)
-
 
             # Compute end-effector position
             self.ee_pos_arr[step_counter+1,:] = self.env.ee(self.state_arr[step_counter+1, :])
@@ -249,7 +246,9 @@ class RL_AC:
                 init_TO_controls[i,:] = np.zeros(self.conf.nb_action)
             else:
                 init_TO_controls[i,:] = self.NN.eval(self.actor_model, torch.tensor(np.array([init_TO_states[i,:]]), dtype=torch.float32)).squeeze().detach().cpu().numpy()
+                print(f"init TO controls {i+1}/{self.NSTEPS_SH}:  {init_TO_controls[i,:]}")
             init_TO_states[i+1,:] = self.env.simulate(init_TO_states[i,:],init_TO_controls[i,:])
+
             if np.isnan(init_TO_states[i+1,:]).any():
                 success_init_flag = 0
                 return None, None, None, None, success_init_flag
