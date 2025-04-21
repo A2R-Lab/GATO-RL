@@ -127,34 +127,29 @@ class RL_AC:
         return update_step_counter
     
     def RL_Solve(self, TO_controls, TO_states):
-        ''' Solve RL problem '''
-        NSTEPS_SH = self.conf.NSTEPS - int(TO_states[0,-1]/self.conf.dt)
-        rwrd_arr = np.empty(NSTEPS_SH+1)                                         # Reward array
-        state_next_rollout_arr = np.zeros((NSTEPS_SH+1, self.conf.nb_state))     # Next state array
-        partial_reward_to_go_arr = np.empty(NSTEPS_SH+1)                         # Partial cost-to-go array
-        done_arr = np.zeros(NSTEPS_SH+1)                                         # Episode-MC-termination flag array
-        ee_pos_arr = np.empty((NSTEPS_SH+1,3))
+        NSTEPS_SH = self.conf.NSTEPS - int(TO_states[0, -1] / self.conf.dt)
+        rwrd_arr = np.empty(NSTEPS_SH + 1)
+        next_arr = np.zeros((NSTEPS_SH + 1, self.conf.nb_state))
+        go_arr = np.empty(NSTEPS_SH + 1)
+        done_arr = np.zeros(NSTEPS_SH + 1)
+        ee_arr = np.empty((NSTEPS_SH + 1, 3))
 
-        # Start RL episode  
-        for step_counter in range(NSTEPS_SH):
-            if step_counter == NSTEPS_SH-1:
-                TO_states[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(TO_states[step_counter,:],\
-                    TO_controls[step_counter-1,:])
-            else:
-                TO_states[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(TO_states[step_counter,:],\
-                    TO_controls[step_counter,:])
-            ee_pos_arr[step_counter+1,:] = self.env.ee(TO_states[step_counter+1, :])
-        rwrd_arr[-1] = self.env.reward(TO_states[-1,:])
+        # start RL episode
+        for t in range(NSTEPS_SH):
+            u = TO_controls[t if t < NSTEPS_SH - 1 else t - 1]
+            TO_states[t + 1], rwrd_arr[t] = self.env.step(TO_states[t], u)
+            ee_arr[t + 1] = self.env.ee(TO_states[t + 1])
+        rwrd_arr[-1] = self.env.reward(TO_states[-1])
 
-        # Compute (partial) cost-to go using n-step TD or Monte Carlo
+        # compute partial cost-to-go (n-step TD or monte carlo)
         for i in range(NSTEPS_SH + 1):
             final = NSTEPS_SH if self.conf.MC else min(i + self.conf.nsteps_TD_N, NSTEPS_SH)
             done_arr[i] = int(self.conf.MC or final == NSTEPS_SH)
             if not self.conf.MC and final < NSTEPS_SH:
-                state_next_rollout_arr[i] = TO_states[final + 1]
-            partial_reward_to_go_arr[i] = sum(rwrd_arr[i:final + 1])
+                next_arr[i] = TO_states[final + 1]
+            go_arr[i] = rwrd_arr[i:final + 1].sum()
 
-        return TO_states, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, ee_pos_arr
+        return TO_states, go_arr, next_arr, done_arr, rwrd_arr, ee_arr
     
     def RL_save_weights(self, update_step_counter='final'):
         ''' Save NN weights '''
@@ -179,8 +174,7 @@ class RL_AC:
         init_TO_states = np.zeros(( NSTEPS_SH+1, self.conf.nb_state)) 
         init_TO_states[0,:] = init_rand_state
 
-        # Simulate actor's actions to compute the state trajectory used to initialize TO state variables
-        # (use ICS for state and 0 for control if it is the first episode otherwise use policy rollout)
+        # Simulate actor's actions to compute trajectory used to initialize TO state variables
         for i in range(NSTEPS_SH):   
             init_TO_controls[i,:] = np.zeros(self.conf.nb_action) if ep == 0 else\
                 self.NN.eval(self.actor_model, torch.tensor(np.array([init_TO_states[i,:]]),\
