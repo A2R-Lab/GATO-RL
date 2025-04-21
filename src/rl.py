@@ -10,8 +10,7 @@ class RL_AC:
         :input env :                            (Environment instance)
 
         :input conf :                           (Configuration file)
-
-            :parma critic_type :                (str) Activation function to use for the critic NN
+            :param critic_type :                (str) Activation function to use for the critic NN
             :param LR_SCHEDULE :                (bool) Flag to use a scheduler for the learning rates
             :param boundaries_schedule_LR_C :   (list) Boudaries of critic LR
             :param values_schedule_LR_C :       (list) Values of critic LR
@@ -41,7 +40,6 @@ class RL_AC:
         self.env = env
         self.NN = NN
         self.conf = conf
-
         self.N_try = N_try
 
         self.actor_model = None
@@ -49,13 +47,7 @@ class RL_AC:
         self.target_critic = None
         self.actor_optimizer = None
         self.critic_optimizer = None
-
-        self.init_rand_state = None
         self.NSTEPS_SH = 0
-        self.control_arr = None
-        self.state_arr = None
-        self.ee_pos_arr = None
-        self.exp_counter = np.zeros(self.conf.REPLAY_SIZE)
         return
     
     def setup_model(self, recover_training=None, weights=None):
@@ -168,21 +160,18 @@ class RL_AC:
         term_arr = np.zeros(NSTEPS_SH+1)                                         # Episode-termination flag array
         term_arr[-1] = 1
         done_arr = np.zeros(NSTEPS_SH+1)                                         # Episode-MC-termination flag array
+        ee_pos_arr = np.empty((NSTEPS_SH+1,3))
 
-        # START RL EPISODE
-        self.control_arr = TO_controls # action clipped in TO
-        
+        # START RL EPISODE  
         for step_counter in range(NSTEPS_SH):
-            # Simulate actions and retrieve next state and compute reward
             if step_counter == NSTEPS_SH-1:
-                self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter-1,:])
-
+                TO_states[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(TO_states[step_counter,:], TO_controls[step_counter-1,:])
             else:
-                self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter,:])
+                TO_states[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(TO_states[step_counter,:], TO_controls[step_counter,:])
 
             # Compute end-effector position
-            self.ee_pos_arr[step_counter+1,:] = self.env.ee(self.state_arr[step_counter+1, :])
-        rwrd_arr[-1] = self.env.reward(self.state_arr[-1,:])
+            ee_pos_arr[step_counter+1,:] = self.env.ee(TO_states[step_counter+1, :])
+        rwrd_arr[-1] = self.env.reward(TO_states[-1,:])
 
         ep_return = sum(rwrd_arr)
 
@@ -197,13 +186,13 @@ class RL_AC:
                 if final_lookahead_step == NSTEPS_SH:
                     done_arr[i] = 1 
                 else:
-                    state_next_rollout_arr[i,:] = self.state_arr[final_lookahead_step+1,:]
+                    state_next_rollout_arr[i,:] = TO_states[final_lookahead_step+1,:]
             
             # Compute the partial and total cost to go
             partial_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:final_lookahead_step+1]))
             total_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:NSTEPS_SH+1]))
 
-        return self.state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, self.ee_pos_arr
+        return TO_states, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, ee_pos_arr
     
     def RL_save_weights(self, update_step_counter='final'):
         ''' Save NN weights '''
@@ -218,27 +207,16 @@ class RL_AC:
 
     def create_TO_init(self, ep, ICS):
         ''' Create initial state and initial controls for TO '''
-        self.init_rand_state = ICS    
+        init_rand_state = ICS    
         
-        NSTEPS_SH = self.conf.NSTEPS - int(self.init_rand_state[-1]/self.conf.dt)
+        NSTEPS_SH = self.conf.NSTEPS - int(init_rand_state[-1]/self.conf.dt)
         if NSTEPS_SH == 0:
             return None, None, None, None, 0
 
-        # Initialize array to store RL state, control, and end-effector trajectories
-        self.control_arr = np.empty((NSTEPS_SH, self.conf.nb_action))
-        self.state_arr = np.empty((NSTEPS_SH+1, self.conf.nb_state))
-        self.ee_pos_arr = np.empty((NSTEPS_SH+1,3))
-
-        # Set initial state and end-effector position
-        self.state_arr[0,:] = self.init_rand_state
-        self.ee_pos_arr[0,:] = self.env.ee(self.state_arr[0, :])
-
         # Initialize array to initialize TO state and control variables
         init_TO_controls = np.zeros((NSTEPS_SH, self.conf.nb_action))
-        init_TO_states = np.zeros(( NSTEPS_SH+1, self.conf.nb_state))
-
-        # Set initial state 
-        init_TO_states[0,:] = self.init_rand_state
+        init_TO_states = np.zeros(( NSTEPS_SH+1, self.conf.nb_state)) 
+        init_TO_states[0,:] = init_rand_state
 
         # Simulate actor's actions to compute the state trajectory used to initialize TO state variables (use ICS for state and 0 for control if it is the first episode otherwise use policy rollout)
         success_init_flag = 1
@@ -254,4 +232,4 @@ class RL_AC:
                 success_init_flag = 0
                 return None, None, None, None, success_init_flag
 
-        return self.init_rand_state, init_TO_states, init_TO_controls, success_init_flag
+        return init_rand_state, init_TO_states, init_TO_controls, success_init_flag

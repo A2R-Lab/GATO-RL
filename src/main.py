@@ -24,7 +24,7 @@ def compute_sample(args):
     # Collect experiences 
     state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr  = rlac.RL_Solve(TO_controls, TO_states)
 
-    return NSTEPS_SH, TO_controls, TO_ee_pos_arr, state_arr.tolist(), partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr
+    return TO_controls, TO_ee_pos_arr, state_arr.tolist(), partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr
 
 if __name__ == '__main__':
     conf = importlib.import_module('iiwa_conf')
