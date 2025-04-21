@@ -159,21 +159,22 @@ class RL_AC:
     
     def RL_Solve(self, TO_controls, TO_states):
         ''' Solve RL problem '''
-        ep_return = 0                                                               # Initialize the return
-        rwrd_arr = np.empty(self.NSTEPS_SH+1)                                         # Reward array
-        state_next_rollout_arr = np.zeros((self.NSTEPS_SH+1, self.conf.nb_state))     # Next state array
-        partial_reward_to_go_arr = np.empty(self.NSTEPS_SH+1)                         # Partial cost-to-go array
-        total_reward_to_go_arr = np.empty(self.NSTEPS_SH+1)                           # Total cost-to-go array
-        term_arr = np.zeros(self.NSTEPS_SH+1)                                         # Episode-termination flag array
+        NSTEPS_SH = self.conf.NSTEPS - int(TO_states[0,-1]/self.conf.dt)
+        ep_return = 0                                                            # Initialize the return
+        rwrd_arr = np.empty(NSTEPS_SH+1)                                         # Reward array
+        state_next_rollout_arr = np.zeros((NSTEPS_SH+1, self.conf.nb_state))     # Next state array
+        partial_reward_to_go_arr = np.empty(NSTEPS_SH+1)                         # Partial cost-to-go array
+        total_reward_to_go_arr = np.empty(NSTEPS_SH+1)                           # Total cost-to-go array
+        term_arr = np.zeros(NSTEPS_SH+1)                                         # Episode-termination flag array
         term_arr[-1] = 1
-        done_arr = np.zeros(self.NSTEPS_SH+1)                                         # Episode-MC-termination flag array
+        done_arr = np.zeros(NSTEPS_SH+1)                                         # Episode-MC-termination flag array
 
         # START RL EPISODE
         self.control_arr = TO_controls # action clipped in TO
         
-        for step_counter in range(self.NSTEPS_SH):
+        for step_counter in range(NSTEPS_SH):
             # Simulate actions and retrieve next state and compute reward
-            if step_counter == self.NSTEPS_SH-1:
+            if step_counter == NSTEPS_SH-1:
                 self.state_arr[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(self.state_arr[step_counter,:], self.control_arr[step_counter-1,:])
 
             else:
@@ -186,21 +187,21 @@ class RL_AC:
         ep_return = sum(rwrd_arr)
 
         # Store transition after computing the (partial) cost-to go when using n-step TD (from 0 to Monte Carlo)
-        for i in range(self.NSTEPS_SH+1):
+        for i in range(NSTEPS_SH+1):
             # set final lookahead step depending on whether Monte Cartlo or TD(n) is used
             if self.conf.MC:
-                final_lookahead_step = self.NSTEPS_SH
+                final_lookahead_step = NSTEPS_SH
                 done_arr[i] = 1 
             else:
-                final_lookahead_step = min(i+self.conf.nsteps_TD_N, self.NSTEPS_SH)
-                if final_lookahead_step == self.NSTEPS_SH:
+                final_lookahead_step = min(i+self.conf.nsteps_TD_N, NSTEPS_SH)
+                if final_lookahead_step == NSTEPS_SH:
                     done_arr[i] = 1 
                 else:
                     state_next_rollout_arr[i,:] = self.state_arr[final_lookahead_step+1,:]
             
             # Compute the partial and total cost to go
             partial_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:final_lookahead_step+1]))
-            total_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:self.NSTEPS_SH+1]))
+            total_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:NSTEPS_SH+1]))
 
         return self.state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, self.ee_pos_arr
     
@@ -219,38 +220,38 @@ class RL_AC:
         ''' Create initial state and initial controls for TO '''
         self.init_rand_state = ICS    
         
-        self.NSTEPS_SH = self.conf.NSTEPS - int(self.init_rand_state[-1]/self.conf.dt)
-        if self.NSTEPS_SH == 0:
+        NSTEPS_SH = self.conf.NSTEPS - int(self.init_rand_state[-1]/self.conf.dt)
+        if NSTEPS_SH == 0:
             return None, None, None, None, 0
 
         # Initialize array to store RL state, control, and end-effector trajectories
-        self.control_arr = np.empty((self.NSTEPS_SH, self.conf.nb_action))
-        self.state_arr = np.empty((self.NSTEPS_SH+1, self.conf.nb_state))
-        self.ee_pos_arr = np.empty((self.NSTEPS_SH+1,3))
+        self.control_arr = np.empty((NSTEPS_SH, self.conf.nb_action))
+        self.state_arr = np.empty((NSTEPS_SH+1, self.conf.nb_state))
+        self.ee_pos_arr = np.empty((NSTEPS_SH+1,3))
 
         # Set initial state and end-effector position
         self.state_arr[0,:] = self.init_rand_state
         self.ee_pos_arr[0,:] = self.env.ee(self.state_arr[0, :])
 
         # Initialize array to initialize TO state and control variables
-        init_TO_controls = np.zeros((self.NSTEPS_SH, self.conf.nb_action))
-        init_TO_states = np.zeros(( self.NSTEPS_SH+1, self.conf.nb_state))
+        init_TO_controls = np.zeros((NSTEPS_SH, self.conf.nb_action))
+        init_TO_states = np.zeros(( NSTEPS_SH+1, self.conf.nb_state))
 
         # Set initial state 
         init_TO_states[0,:] = self.init_rand_state
 
         # Simulate actor's actions to compute the state trajectory used to initialize TO state variables (use ICS for state and 0 for control if it is the first episode otherwise use policy rollout)
         success_init_flag = 1
-        for i in range(self.NSTEPS_SH):   
+        for i in range(NSTEPS_SH):   
             if ep == 0:
                 init_TO_controls[i,:] = np.zeros(self.conf.nb_action)
             else:
                 init_TO_controls[i,:] = self.NN.eval(self.actor_model, torch.tensor(np.array([init_TO_states[i,:]]), dtype=torch.float32)).squeeze().detach().cpu().numpy()
-                print(f"init TO controls {i+1}/{self.NSTEPS_SH}:  {init_TO_controls[i,:]}")
+                print(f"init TO controls {i+1}/{NSTEPS_SH}:  {init_TO_controls[i,:]}")
             init_TO_states[i+1,:] = self.env.simulate(init_TO_states[i,:],init_TO_controls[i,:])
 
             if np.isnan(init_TO_states[i+1,:]).any():
                 success_init_flag = 0
                 return None, None, None, None, success_init_flag
 
-        return self.init_rand_state, init_TO_states, init_TO_controls, self.NSTEPS_SH, success_init_flag
+        return self.init_rand_state, init_TO_states, init_TO_controls, success_init_flag

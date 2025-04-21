@@ -14,7 +14,7 @@ N_try = 0
 def compute_sample(args):
     ep, ICS = args[0], args[1]
     # Create initial TO
-    init_rand_state, init_TO_states, init_TO_controls, NSTEPS_SH, success_init_flag = rlac.create_TO_init(ep, ICS)
+    init_rand_state, init_TO_states, init_TO_controls, success_init_flag = rlac.create_TO_init(ep, ICS)
     if success_init_flag == 0:
         return None
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
             tmp.append(result)
         tmp = [x for x in tmp if x is not None]
         print(f"Compute_sample {len(tmp)}/{conf.EP_UPDATE} success")
-        NSTEPS_SH, TO_controls, ee_pos_arr_TO, state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, ee_pos_arr_RL = zip(*tmp)
+        TO_controls, ee_pos_arr_TO, state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, ee_pos_arr_RL = zip(*tmp)
         buffer.add(state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, term_arr)
 
 
