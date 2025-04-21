@@ -35,7 +35,6 @@ class RL_AC:
             :param REPLAY_SIZE :                (int) Max number of transitions to store in the buffer. When the buffer overflows the old memories are dropped
             :param NNs_path :                   (str) NNs path
             :param NSTEPS :                     (int) Max episode length
-
     '''
         self.env = env
         self.NN = NN
@@ -165,34 +164,27 @@ class RL_AC:
         # START RL EPISODE  
         for step_counter in range(NSTEPS_SH):
             if step_counter == NSTEPS_SH-1:
-                TO_states[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(TO_states[step_counter,:], TO_controls[step_counter-1,:])
+                TO_states[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(TO_states[step_counter,:],\
+                    TO_controls[step_counter-1,:])
             else:
-                TO_states[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(TO_states[step_counter,:], TO_controls[step_counter,:])
+                TO_states[step_counter+1,:], rwrd_arr[step_counter] = self.env.step(TO_states[step_counter,:],\
+                    TO_controls[step_counter,:])
 
             # Compute end-effector position
             ee_pos_arr[step_counter+1,:] = self.env.ee(TO_states[step_counter+1, :])
         rwrd_arr[-1] = self.env.reward(TO_states[-1,:])
-
         ep_return = sum(rwrd_arr)
 
         # Store transition after computing the (partial) cost-to go when using n-step TD (from 0 to Monte Carlo)
-        for i in range(NSTEPS_SH+1):
-            # set final lookahead step depending on whether Monte Cartlo or TD(n) is used
-            if self.conf.MC:
-                final_lookahead_step = NSTEPS_SH
-                done_arr[i] = 1 
-            else:
-                final_lookahead_step = min(i+self.conf.nsteps_TD_N, NSTEPS_SH)
-                if final_lookahead_step == NSTEPS_SH:
-                    done_arr[i] = 1 
-                else:
-                    state_next_rollout_arr[i,:] = TO_states[final_lookahead_step+1,:]
-            
-            # Compute the partial and total cost to go
-            partial_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:final_lookahead_step+1]))
-            total_reward_to_go_arr[i] = np.float32(sum(rwrd_arr[i:NSTEPS_SH+1]))
+        for i in range(NSTEPS_SH + 1):
+            final = NSTEPS_SH if self.conf.MC else min(i + self.conf.nsteps_TD_N, NSTEPS_SH)
+            done_arr[i] = int(self.conf.MC or final == NSTEPS_SH)
+            if not self.conf.MC and final < NSTEPS_SH:
+                state_next_rollout_arr[i] = TO_states[final + 1]
+            partial_reward_to_go_arr[i] = sum(rwrd_arr[i:final + 1])
 
-        return TO_states, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, ee_pos_arr
+        return TO_states, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr,\
+             term_arr, ee_pos_arr
     
     def RL_save_weights(self, update_step_counter='final'):
         ''' Save NN weights '''
@@ -208,7 +200,6 @@ class RL_AC:
     def create_TO_init(self, ep, ICS):
         ''' Create initial state and initial controls for TO '''
         init_rand_state = ICS    
-        
         NSTEPS_SH = self.conf.NSTEPS - int(init_rand_state[-1]/self.conf.dt)
         if NSTEPS_SH == 0:
             return None, None, None, None, 0
@@ -218,13 +209,15 @@ class RL_AC:
         init_TO_states = np.zeros(( NSTEPS_SH+1, self.conf.nb_state)) 
         init_TO_states[0,:] = init_rand_state
 
-        # Simulate actor's actions to compute the state trajectory used to initialize TO state variables (use ICS for state and 0 for control if it is the first episode otherwise use policy rollout)
+        # Simulate actor's actions to compute the state trajectory used to initialize TO state variables
+        # (use ICS for state and 0 for control if it is the first episode otherwise use policy rollout)
         success_init_flag = 1
         for i in range(NSTEPS_SH):   
             if ep == 0:
                 init_TO_controls[i,:] = np.zeros(self.conf.nb_action)
             else:
-                init_TO_controls[i,:] = self.NN.eval(self.actor_model, torch.tensor(np.array([init_TO_states[i,:]]), dtype=torch.float32)).squeeze().detach().cpu().numpy()
+                init_TO_controls[i,:] = self.NN.eval(self.actor_model, torch.tensor(np.array([init_TO_states[i,:]]),\
+                     dtype=torch.float32)).squeeze().detach().cpu().numpy()
                 print(f"init TO controls {i+1}/{NSTEPS_SH}:  {init_TO_controls[i,:]}")
             init_TO_states[i+1,:] = self.env.simulate(init_TO_states[i,:],init_TO_controls[i,:])
 

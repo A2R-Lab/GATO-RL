@@ -13,18 +13,16 @@ N_try = 0
 
 def compute_sample(args):
     ep, ICS = args[0], args[1]
-    # Create initial TO
+    # Create initial TO and solve
     init_rand_state, init_TO_states, init_TO_controls, success_init_flag = rlac.create_TO_init(ep, ICS)
     if success_init_flag == 0:
         return None
-
-    # Solve TO problem
     TO_states, TO_controls, TO_ee_pos_arr = TrOp.TO_Solve(init_rand_state, init_TO_states, init_TO_controls)
     
     # Collect experiences 
-    state_arr, partial_reward_to_go_arr, total_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr  = rlac.RL_Solve(TO_controls, TO_states)
+    state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, RL_ee_pos_arr  = rlac.RL_Solve(TO_controls, TO_states)
 
-    return TO_controls, TO_ee_pos_arr, state_arr.tolist(), partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, RL_ee_pos_arr
+    return TO_controls, TO_ee_pos_arr, state_arr.tolist(), partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, sum(rwrd_arr), RL_ee_pos_arr
 
 if __name__ == '__main__':
     conf = importlib.import_module('iiwa_conf')
