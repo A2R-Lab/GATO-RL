@@ -30,11 +30,13 @@ class TO:
     
         X = np.array([pyt.XU[i * (self.conf.nx + self.conf.na) : i * (self.conf.nx + self.conf.na) + self.conf.nx] for i in range(N)]) 
         U = np.array([pyt.XU[i * (self.conf.nx + self.conf.na) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.na)] for i in range(N-1)])
+        timesteps = init_TO_states[:, -1].reshape(N, 1)
+        X = np.hstack((X, timesteps))
+
         ee_pos_list = []
         for k in range(pyt.N):
             XU_k = pyt.XU[k * (self.conf.nx + self.conf.na) : k * (self.conf.nx + self.conf.na) + self.conf.nq]
             ee_pos = pyt.eepos(XU_k)
             ee_pos_list.append(ee_pos)
         ee_pos_arr = np.array(ee_pos_list)
-        
         return X, U, ee_pos_arr
