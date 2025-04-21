@@ -12,17 +12,14 @@ sys.path.append(PATH_TO_CONF)
 N_try = 0
 
 def compute_sample(args):
-    ep, ICS = args[0], args[1]
-    # Create initial TO and solve
-    init_rand_state, init_TO_states, init_TO_controls, success_init_flag = rlac.create_TO_init(ep, ICS)
-    if success_init_flag == 0:
-        return None
-    TO_states, TO_controls, TO_ee_pos_arr = TrOp.TO_Solve(init_rand_state, init_TO_states, init_TO_controls)
-    
-    # Collect experiences 
-    state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, RL_ee_pos_arr  = rlac.RL_Solve(TO_controls, TO_states)
+    ep, init_state = args
+    init_state, init_states, init_controls, success = rlac.create_TO_init(ep, init_state)
+    if not success: return None
 
-    return TO_controls, TO_ee_pos_arr, state_arr.tolist(), partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, sum(rwrd_arr), RL_ee_pos_arr
+    TO_states, TO_controls, ee_pos = TrOp.TO_Solve(init_state, init_states, init_controls)
+    states, partial_rtg, next_states, done, rewards, rl_ee_pos = rlac.RL_Solve(TO_controls, TO_states)
+
+    return TO_controls, ee_pos, states.tolist(), partial_rtg, next_states, done, rewards, sum(rewards), rl_ee_pos
 
 if __name__ == '__main__':
     conf = importlib.import_module('iiwa_conf')
@@ -49,8 +46,8 @@ if __name__ == '__main__':
             tmp.append(result)
         tmp = [x for x in tmp if x is not None]
         print(f"Compute_sample {len(tmp)}/{conf.EP_UPDATE} success")
-        TO_controls, ee_pos_arr_TO, state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, term_arr, ep_return, ee_pos_arr_RL = zip(*tmp)
-        buffer.add(state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, term_arr)
+        TO_controls, ee_pos_arr_TO, state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr, rwrd_arr, ep_return, ee_pos_arr_RL = zip(*tmp)
+        buffer.add(state_arr, partial_reward_to_go_arr, state_next_rollout_arr, done_arr)
 
 
         # Update NNs

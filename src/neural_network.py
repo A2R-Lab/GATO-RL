@@ -225,7 +225,7 @@ class NN:
 
         return reward_to_go_batch, critic_value, self.eval(target_critic, state_batch)
 
-    def compute_actor_grad(self, actor_model, critic_model, state_batch, term_batch, batch_size):
+    def compute_actor_grad(self, actor_model, critic_model, state_batch, batch_size):
         ''' 
         Compute and apply the gradient of the actor NN. Does not return anything since the 
         gradients will be present in .grad attributes of the actor_model after execution.
