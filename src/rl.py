@@ -148,11 +148,9 @@ class RL_AC:
             if not self.conf.MC and final < NSTEPS_SH:
                 next_arr[i] = TO_states[final + 1]
             go_arr[i] = rwrd_arr[i:final + 1].sum()
-
         return TO_states, go_arr, next_arr, done_arr, rwrd_arr, ee_arr
     
     def RL_save_weights(self, update_step_counter='final'):
-        ''' Save NN weights '''
         actor_model_path = f"{self.conf.NNs_path}/N_try_{self.N_try}/actor_{update_step_counter}.pth"
         critic_model_path = f"{self.conf.NNs_path}/N_try_{self.N_try}/critic_{update_step_counter}.pth"
         target_critic_path = f"{self.conf.NNs_path}/N_try_{self.N_try}/target_critic_{update_step_counter}.pth"
@@ -163,7 +161,6 @@ class RL_AC:
         torch.save(self.target_critic.state_dict(), target_critic_path)
 
     def create_TO_init(self, ep, ICS):
-        ''' Create initial state and initial controls for TO '''
         init_rand_state = ICS    
         NSTEPS_SH = self.conf.NSTEPS - int(init_rand_state[-1]/self.conf.dt)
         if NSTEPS_SH == 0:

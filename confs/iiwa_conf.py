@@ -52,7 +52,7 @@ values_schedule_LR_A = [ACTOR_LEARNING_RATE,
                         ACTOR_LEARNING_RATE/8,
                         ACTOR_LEARNING_RATE/16]  
 
-NORMALIZE_INPUTS = 1                                                                                        # Flag to normalize inputs (state)
+NORMALIZE_INPUTS = 0                                                                                     # Flag to normalize inputs (state)
 
 kreg_l1_A = 1e-2                                                                                            # Weight of L1 regularization in actor's network - kernel
 kreg_l2_A = 1e-2                                                                                            # Weight of L2 regularization in actor's network - kernel
@@ -71,7 +71,7 @@ prioritized_replay_eps = 1e-2                                                   
 fresh_factor = 0.95                                                                                         # Refresh factor
 
 ############################################# ROBOT PARAMETERS ##############################################
-dt = 0.1
+dt = 0.001
 nb_state = 15
 x_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,-1.57,-1.57,-1.57,-1.57,-1.57,-1.57,-1.57,0])
 x_init_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,0])
@@ -129,7 +129,7 @@ class Env:
         q, v = state[:self.nq], state[self.nq:self.nx]
         qdd = pin.aba(self.conf.robot.model, self.conf.robot_data, q, v, action)
         v_new = v + qdd * self.conf.dt
-        q_new = pin.integrate(self.conf.robot.model, q, v_new * dt)
+        q_new = pin.integrate(self.conf.robot.model, q, v_new * self.conf.dt)
 
         state_next[:self.nq], state_next[self.nq:self.nx] = np.copy(q_new), np.copy(v_new)
         state_next[-1] = state[-1] + self.conf.dt

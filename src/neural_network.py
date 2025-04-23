@@ -210,9 +210,6 @@ class NN:
     def compute_critic_grad(self, critic_model, target_critic, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch):
         ''' Compute the gradient of the critic NN. Does not return the critic gradients since 
         they will be present in .grad attributes of the critic_model after execution.'''
-        #NOTE: regularization added#
-        #Tested Successfully#
-        self.conf.MC = True
         reward_to_go_batch = partial_reward_to_go_batch if self.conf.MC else partial_reward_to_go_batch + (1 - d_batch) * self.eval(target_critic, state_next_rollout_batch)
 
         critic_model.zero_grad()

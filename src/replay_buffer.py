@@ -37,8 +37,7 @@ class ReplayBuffer(object):
             max_idx = self.conf.REPLAY_SIZE
         else:
             max_idx = self.next_idx
-        idxes = np.random.randint(0, max_idx, size=self.conf.BATCH_SIZE) 
-
+        idxes = np.random.randint(0, max_idx, size=self.conf.BATCH_SIZE)
         obses_t = self.storage_mat[idxes, :self.conf.nb_state]
         rewards = self.storage_mat[idxes, self.conf.nb_state:self.conf.nb_state+1]
         obses_t1 = self.storage_mat[idxes, self.conf.nb_state+1:self.conf.nb_state*2+1]
@@ -50,7 +49,6 @@ class ReplayBuffer(object):
 
         # Convert the sample in tensor
         obses_t, rewards, obses_t1, dones, weights = self.convert_sample_to_tensor(obses_t, rewards, obses_t1, dones, weights)
-        
         return obses_t, rewards, obses_t1, dones, weights, batch_idxes
 
     def concatenate_sample(self, obses_t, rewards, obses_t1, dones):
