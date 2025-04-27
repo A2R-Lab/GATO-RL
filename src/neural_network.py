@@ -28,7 +28,6 @@ class NN:
     def __init__(self, env, conf, w_S=0):
         '''    
         :input env :                            (Environment instance)
-
         :input self.conf :                           (self.configuration file)
 
             :param NH1:                         (int) 1st hidden layer size
@@ -43,7 +42,6 @@ class NN:
             :param breg_l2_C :                  (float) Weight of L2 regularization in critic's network - bias  
             :param u_max :                      (float array) Action upper bound array
             :param nb_state :                   (int) State size (robot state size + 1)
-            :param nb_action :                  (int) Action size (robot action size)
             :param NORMALIZE_INPUTS :           (bool) Flag to normalize inputs (state)
             :param state_norm_array :           (float array) Array used to normalize states
             :param MC :                         (bool) Flag to use MC or TD(n)
@@ -89,7 +87,7 @@ class NN:
             nn.LeakyReLU(negative_slope=0.3),
             nn.Linear(self.conf.NH1, self.conf.NH2),
             nn.LeakyReLU(negative_slope=0.3),
-            nn.Linear(self.conf.NH2, self.conf.nb_action)
+            nn.Linear(self.conf.NH2, self.conf.na)
         )
         if weights is not None:
             model = self.weightCopy(model, weights)
@@ -260,7 +258,7 @@ class NN:
                                     grad_outputs=torch.ones_like(rewards_tf),
                                     create_graph=True)[0]
 
-        dr_da_reshaped = dr_da.view(batch_size, 1, self.conf.nb_action)
+        dr_da_reshaped = dr_da.view(batch_size, 1, self.conf.na)
 
         # dr_ds' + dV_ds' (note: dr_ds' = 0)
         dQ_ds_next = dV_ds_next.view(batch_size, 1, self.conf.nb_state)
@@ -273,8 +271,8 @@ class NN:
 
         # Multiply -[(dr_ds' + dV_ds')*ds'_da + dr_da] by the actions a
         actions = self.eval(actor_model, state_batch)
-        actions_reshaped = actions.view(batch_size, self.conf.nb_action, 1)
-        dQ_da_reshaped = dQ_da.view(batch_size, 1, self.conf.nb_action)
+        actions_reshaped = actions.view(batch_size, self.conf.na, 1)
+        dQ_da_reshaped = dQ_da.view(batch_size, 1, self.conf.na)
         #Q_neg = torch.bmm(-dQ_da_reshaped, actions_reshaped)
         Q_neg = torch.matmul(-dQ_da_reshaped, actions_reshaped)
 

@@ -3,16 +3,14 @@ from pinocchio.robot_wrapper import RobotWrapper
 import torch
 import os
 import pinocchio as pin
-# import pinocchio.casadi as cpin
-import casadi as ca
 
 ############################################# CACTO PARAMETERS #############################################
-EP_UPDATE = 200                                                                                            # Number of episodes before updating critic and actor
+EP_UPDATE = 200                                                                                             # Number of episodes before updating critic and actor
 NUPDATES = 100000                                                                                           # Max NNs updates
 UPDATE_LOOPS = np.arange(1000, 48000, 3000)                                                                 # Number of updates of both critic and actor performed every EP_UPDATE episodes                                                                                
 NEPISODES = int(EP_UPDATE*len(UPDATE_LOOPS))                                                                # Max training episodes
 NLOOPS = len(UPDATE_LOOPS)                                                                                  # Number of algorithm loops
-NSTEPS = 32                                                                                                 # Max episode length
+NSTEPS = 50                                                                                                 # Max episode length
 CRITIC_LEARNING_RATE = 5e-4                                                                                 # Learning rate for the critic network
 ACTOR_LEARNING_RATE = 1e-3                                                                                  # Learning rate for the policy network
 REPLAY_SIZE = 2**16                                                                                         # Size of the replay buffer
@@ -28,7 +26,8 @@ if not MC:
 critic_type = 'sine'                                                                                        # Activation function - critic (either relu, elu, sine, sine-elu)
 NH1 = 256                                                                                                   # 1st hidden layer size - actor
 NH2 = 256                                                                                                   # 2nd hidden layer size - actor
-                                                                                                  			# 2nd hidden layer size  
+NNs_path = 'iiwa'
+
 LR_SCHEDULE = 0                                                                                             # Flag to use a scheduler for the learning rates
 boundaries_schedule_LR_C = [200*REPLAY_SIZE/BATCH_SIZE, 
                             300*REPLAY_SIZE/BATCH_SIZE,
@@ -39,7 +38,8 @@ values_schedule_LR_C = [CRITIC_LEARNING_RATE,
                         CRITIC_LEARNING_RATE/2,
                         CRITIC_LEARNING_RATE/4,
                         CRITIC_LEARNING_RATE/8,
-                        CRITIC_LEARNING_RATE/16]  
+                        CRITIC_LEARNING_RATE/16]
+ 
 # Numbers of critic updates after which the actor LR is changed (based on values_schedule_LR_A)
 boundaries_schedule_LR_A = [200*REPLAY_SIZE/BATCH_SIZE,
                             300*REPLAY_SIZE/BATCH_SIZE,
@@ -52,7 +52,7 @@ values_schedule_LR_A = [ACTOR_LEARNING_RATE,
                         ACTOR_LEARNING_RATE/8,
                         ACTOR_LEARNING_RATE/16]  
 
-NORMALIZE_INPUTS = 0                                                                                     # Flag to normalize inputs (state)
+NORMALIZE_INPUTS = 0                                                                                        # Flag to normalize inputs (state)
 
 kreg_l1_A = 1e-2                                                                                            # Weight of L1 regularization in actor's network - kernel
 kreg_l2_A = 1e-2                                                                                            # Weight of L2 regularization in actor's network - kernel
@@ -63,31 +63,23 @@ kreg_l2_C = 1e-2                                                                
 breg_l1_C = 1e-2                                                                                            # Weight of L1 regularization in critic's network - bias
 breg_l2_C = 1e-2                                                                                            # Weight of L2 regularization in critic's network - bias
 
-############################################# BUFFER PARAMETERS #############################################
-prioritized_replay_alpha = 0                                                                                # α determines how much prioritization is used, set to 0 to use a normal buffer. Used to define the probability of sampling transition i --> P(i) = p_i**α / sum(p_k**α) where p_i is the priority of transition i 
-prioritized_replay_beta = 0.6          
-prioritized_replay_beta_iters = None                                                                        # Therefore let's exploit the flexibility of annealing the amount of IS correction over time, by defining a schedule on the exponent β that from its initial value β0 reaches 1 only at the end of learning.
-prioritized_replay_eps = 1e-2                                                                               # It's a small positive constant that prevents the edge-case of transitions not being revisited once their error is zero
-fresh_factor = 0.95                                                                                         # Refresh factor
-
 ############################################# ROBOT PARAMETERS ##############################################
-dt = 0.001
-nb_state = 15
+dt = 0.01
 x_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,-1.57,-1.57,-1.57,-1.57,-1.57,-1.57,-1.57,0])
 x_init_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,0])
 x_max = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,np.inf])
 x_init_max = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,1.57,1.57,1.57,1.57,1.57,1.57,1.57,(NSTEPS-1)*dt])
 state_norm_arr = np.array([10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, int(NSTEPS*dt)])
-nb_action = 7
+nb_state = 15
+nx = 14
 nq = 7
 nv = 7
-nx = 14
 na = 7
 URDF_PATH = os.path.join(os.getcwd(), 'urdfs/iiwa.urdf')
 robot = RobotWrapper.BuildFromURDF(URDF_PATH, [URDF_PATH])
 robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
-TARGET_STATE = [0.5, 0.5, 0.5]
+
 #############################################################################################################
 
 class Env:
@@ -97,14 +89,7 @@ class Env:
         self.nv = conf.nv
         self.nx = conf.nx
         self.nu = conf.na
-        self.TARGET_STATE = self.conf.TARGET_STATE
-        # self.cmodel = cpin.Model(self.conf.robot.model)
-        # self.cdata = self.cmodel.createData()
-        cx = ca.SX.sym("x",self.conf.nx,1)
-        cu = ca.SX.sym("u",self.conf.na,1)
-        # self.x_next = ca.Function('x_next', [cx, cu], [self.cpin_simulate(cx,cu)])
-        # self.ee_p = ca.Function('ee_p', [cx], [self.cdata.oMf[self.conf.robot.model.getFrameId(self.conf.end_effector_frame_id)].translation])
-        # self.cost = ca.Function('cost', [cx,cu], [self.cost(cx,cu)])
+        self.TARGET_STATE = [0.5, 0.5, 0.5]
 
     def reset(self):
         ''' Choose initial state uniformly at random '''
@@ -138,17 +123,12 @@ class Env:
     def simulate_batch(self, state, action):
         ''' Simulate dynamics using tensors and compute its gradient w.r.t control. Batch-wise computation '''        
         state_next = np.array([self.simulate(s, a) for s, a in zip(state, action)])
-
         return torch.tensor(state_next, dtype=torch.float32)
 
     def step(self, state, action):
         ''' Return next state and reward '''
-        # compute next state
         state_next = self.simulate(state, action)
-
-        # compute reward
         reward = self.reward( state, action)
-
         return (state_next, reward)
     
     def derivative(self, state, action):
@@ -197,7 +177,7 @@ class Env:
     def reward(self, state, action=None):
         QD_cost, R_cost = 0.0001, 0.0001
         total_cost = -0.5 * QD_cost * np.sum(state[self.nx//2:] ** 2) # velocity cost
-        total_cost += -0.5 * np.sum((self.ee(state) - self.conf.TARGET_STATE) ** 2) # ee pos cost
+        total_cost += -0.5 * np.sum((self.ee(state) - self.TARGET_STATE) ** 2) # ee pos cost
 
         if action is not None:
             total_cost += -0.5 * R_cost * np.sum(action ** 2) # control cost
@@ -210,7 +190,7 @@ class Env:
         total_cost = -0.5 * QD_cost * torch.sum(state_batch[:, self.nx//2:]**2, dim=1) # velocity cost
 
         ee_pos = self.ee_batch(state_batch)
-        target = torch.tensor(self.conf.TARGET_STATE, dtype=ee_pos.dtype, device=ee_pos.device)
+        target = torch.tensor(self.TARGET_STATE, dtype=ee_pos.dtype, device=ee_pos.device)
         total_cost += -0.5 * torch.sum((ee_pos - target) ** 2, dim=1) # ee pos cost
 
         if action_batch is not None:

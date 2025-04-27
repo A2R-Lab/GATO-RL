@@ -66,7 +66,6 @@ class RL_AC:
     def update(self, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch,\
         batch_size=None):
         ''' Update both critic and actor '''
-
         # Update the critic by backpropagating the gradients
         self.critic_optimizer.zero_grad()
         reward_to_go_batch, critic_value, target_critic_value = self.NN.compute_critic_grad(self.critic_model,\
@@ -167,13 +166,13 @@ class RL_AC:
             return None, None, None, 0
 
         # Initialize array to initialize TO state and control variables
-        init_TO_controls = np.zeros((NSTEPS_SH, self.conf.nb_action))
+        init_TO_controls = np.zeros((NSTEPS_SH, self.conf.na))
         init_TO_states = np.zeros(( NSTEPS_SH+1, self.conf.nb_state)) 
         init_TO_states[0,:] = init_rand_state
 
         # Simulate actor's actions to compute trajectory used to initialize TO state variables
         for i in range(NSTEPS_SH):   
-            init_TO_controls[i,:] = np.zeros(self.conf.nb_action) if ep == 0 else\
+            init_TO_controls[i,:] = np.zeros(self.conf.na) if ep == 0 else\
                 self.NN.eval(self.actor_model, torch.tensor(np.array([init_TO_states[i,:]]),\
                 dtype=torch.float32)).squeeze().detach().cpu().numpy()
             print(f"init TO controls {i+1}/{NSTEPS_SH}:  {init_TO_controls[i,:]}")
@@ -181,5 +180,4 @@ class RL_AC:
 
             if np.isnan(init_TO_states[i+1,:]).any():
                 return None, None, None, 0
-
         return init_rand_state, init_TO_states, init_TO_controls, 1
