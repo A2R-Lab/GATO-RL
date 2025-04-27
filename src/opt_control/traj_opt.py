@@ -19,8 +19,10 @@ class TO:
         for i in range(N-1):
             pyt.XU[i * (self.conf.nx + self.conf.na) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.na)] = init_TO_controls[i]
 
-        xs = np.zeros(pyt.nx)  # Initial state
-        eepos_g = 0.5 * np.ones(3 * pyt.N)
+        eepos_g = np.zeros(3 * pyt.N)
+        eepos_g[-3:] = 0.5 * np.ones(3)
+        
+        xs = init_TO_states[0,:-1]
         pyt.setxs(xs)
 
         num_iters = 100
@@ -36,7 +38,7 @@ class TO:
         ee_pos_list = []
         for k in range(pyt.N):
             XU_k = pyt.XU[k * (self.conf.nx + self.conf.na) : k * (self.conf.nx + self.conf.na) + self.conf.nq]
-            ee_pos = pyt.eepos(XU_k)
+            ee_pos = self.env.ee(XU_k)
             ee_pos_list.append(ee_pos)
         ee_pos_arr = np.array(ee_pos_list)
         return X, U, ee_pos_arr
