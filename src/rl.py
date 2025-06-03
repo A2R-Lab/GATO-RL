@@ -10,7 +10,6 @@ class RL_AC:
         self.NN = NN
         self.conf = conf
         self.N_try = N_try
-
         self.actor_model = None
         self.critic_model = None
         self.target_critic = None
@@ -36,13 +35,6 @@ class RL_AC:
             lr = self.conf.CRITIC_LEARNING_RATE)
         self.actor_optimizer    = torch.optim.Adam(self.actor_model.parameters(), eps = 1e-7,\
             lr = self.conf.ACTOR_LEARNING_RATE)
-        
-        # Set lr schedulers (piecewise constant delay schedule)
-        if self.conf.LR_SCHEDULE:
-            self.CRITIC_LR_SCHEDULE = torch.optim.lr_scheduler.MultiStepLR(self.critic_optimizer, milestones =\
-                 self.conf.values_schedule_LR_C, gamma = 0.5)
-            self.ACTOR_LR_SCHEDULE  = torch.optim.lr_scheduler.MultiStepLR(self.actor_optimizer, milestones =\
-                self.conf.values_schedule_LR_A, gamma = 0.5)
 
         #  Recover weights
         if recover_training is not None: 
