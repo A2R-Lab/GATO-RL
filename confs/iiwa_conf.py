@@ -50,8 +50,8 @@ nb_state = 15
 nx = 14
 nq = 7
 na = 7
-URDF_PATH = os.path.join(os.getcwd(), 'urdfs/iiwa.urdf')
-robot = RobotWrapper.BuildFromURDF(URDF_PATH, [URDF_PATH])
+URDF_PATH = os.path.abspath('iiwa.urdf')
+robot = RobotWrapper.BuildFromURDF(URDF_PATH, package_dirs=[os.path.dirname(URDF_PATH)])
 robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
 
@@ -63,7 +63,6 @@ class Env:
         self.nx = conf.nx
         self.na = conf.na
         self.TARGET_STATE = conf.goal_ee
-
 
     def reset_batch(self, batch_size):
         times = np.random.uniform(self.conf.x_init_min[-1], self.conf.x_init_max[-1], batch_size)
