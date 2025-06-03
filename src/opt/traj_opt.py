@@ -3,7 +3,7 @@ import casadi as ca
 from .pinocchio_template import thneed
 
 
-class TO:
+class TrajOpt:
     def __init__(self, env, conf, w_S=0):
         self.env = env
         self.conf = conf

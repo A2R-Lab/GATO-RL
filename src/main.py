@@ -2,21 +2,18 @@ import sys
 import os
 import importlib
 import numpy as np
-from neural_network import NN
+from neural_network import ActorCriticNet
 from replay_buffer import ReplayBuffer
-from rl import RL_AC
-from opt_control.traj_opt import TO
+from rl_trainer import RLTrainer
+from opt.traj_opt import TrajOpt
 
 # -----Sample computation function-----------------------------------------------------------------
 def compute_sample(args):
     ep, init_state, env = args
-    init_state, init_states, init_controls, success = rlac.create_TO_init(ep, init_state)
+    init_state, init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
     if not success: return None
-    print("after create TO init", env.ee(init_states[-1]))
-    TO_states, TO_controls = TrOp.TO_Solve(init_state, init_states, init_controls)
-    print("after TO solve", env.ee(TO_states[-1]))
-    RL_states, partial_rtg, next_states, done, rewards = rlac.RL_Solve(TO_controls, TO_states)
-    print("after RL solve", env.ee(RL_states[-1]))
+    TO_states, TO_controls = trajopt.TO_Solve(init_state, init_states, init_controls)
+    RL_states, partial_rtg, next_states, done, rewards = trainer.RL_Solve(TO_controls, TO_states)
     return RL_states.tolist(), partial_rtg, next_states, done, rewards
 
 
@@ -29,11 +26,11 @@ if __name__ == '__main__':
 
     # initialze env, nn, buffer, TO, and rl
     env = getattr(conf, 'Env')(conf)
-    nn = NN(env, conf)
+    nn = ActorCriticNet(env, conf)
     buffer = ReplayBuffer(conf)
-    TrOp = TO(env, conf)
-    rlac = RL_AC(env, nn, conf, 0)
-    rlac.setup_model()
+    trajopt = TrajOpt(env, conf)
+    trainer = RLTrainer(env, nn, conf, 0)
+    trainer.setup_model()
 
     # initialize episode reward arrays
     ep_arr_idx = 0
@@ -53,7 +50,7 @@ if __name__ == '__main__':
         buffer.add(states, partial_rewards, state_nexts, dones)
 
         # Update nns and record rewards
-        update_step_counter = rlac.learn_and_update(update_step_counter, buffer, ep)
+        update_step_counter = trainer.learn_and_update(update_step_counter, buffer, ep)
         ep_reward_arr[ep_arr_idx : ep_arr_idx + num_success] = rewards
         ep_arr_idx += num_success
 
@@ -63,7 +60,7 @@ if __name__ == '__main__':
         if update_step_counter > conf.NUPDATES:
             break
     
-    rlac.RL_save_weights()
+    trainer.RL_save_weights()
 
     
 

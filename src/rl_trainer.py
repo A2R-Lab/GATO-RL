@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import time
 
-class RL_AC:
+class RLTrainer:
     def __init__(self, env, NN, conf, N_try):
         self.env = env
         self.NN = NN

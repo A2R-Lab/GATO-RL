@@ -20,7 +20,7 @@ class WeightedMSELoss(torch.nn.Module):
             mse_loss = mse_loss * weights
         return torch.mean(mse_loss)
 
-class NN:
+class ActorCriticNet:
     def __init__(self, env, conf):
         self.env = env
         self.conf = conf
@@ -28,7 +28,6 @@ class NN:
         self.batch_size = conf.BATCH_SIZE
         return
 
-    
     def create_actor(self):
         model = nn.Sequential(
             nn.Linear(self.conf.nb_state, self.conf.NH1),
