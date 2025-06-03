@@ -5,10 +5,6 @@ from siren_pytorch import Siren
 from utils import normalize_tensor
     
 class WeightedMSELoss(torch.nn.Module):
-    '''
-    Weighted MSE Loss class to match tensorflow functionality with no reduction.
-    '''
-    #Tested Successfully#
     def __init__(self):
         super(WeightedMSELoss, self).__init__()
     
@@ -25,63 +21,15 @@ class WeightedMSELoss(torch.nn.Module):
         return torch.mean(mse_loss)
 
 class NN:
-    def __init__(self, env, conf, w_S=0):
-        '''    
-        :input env :                            (Environment instance)
-        :input self.conf :                           (self.configuration file)
-
-            :param NH1:                         (int) 1st hidden layer size
-            :param NH2:                         (int) 2nd hidden layer size
-            :param kreg_l1_A :                  (float) Weight of L1 regularization in actor's network - kernel  
-            :param kreg_l2_A :                  (float) Weight of L2 regularization in actor's network - kernel  
-            :param breg_l1_A :                  (float) Weight of L2 regularization in actor's network - bias  
-            :param breg_l2_A :                  (float) Weight of L2 regularization in actor's network - bias  
-            :param kreg_l1_C :                  (float) Weight of L1 regularization in critic's network - kernel  
-            :param kreg_l2_C :                  (float) Weight of L2 regularization in critic's network - kernel  
-            :param breg_l1_C :                  (float) Weight of L1 regularization in critic's network - bias  
-            :param breg_l2_C :                  (float) Weight of L2 regularization in critic's network - bias  
-            :param u_max :                      (float array) Action upper bound array
-            :param nb_state :                   (int) State size (robot state size + 1)
-            :param NORMALIZE_INPUTS :           (bool) Flag to normalize inputs (state)
-            :param state_norm_array :           (float array) Array used to normalize states
-            :param MC :                         (bool) Flag to use MC or TD(n)
-            :param cost_weights_terminal :      (float array) Running cost weights vector
-            :param cost_weights_running :       (float array) Terminal cost weights vector 
-            :param BATCH_SIZE :                 (int) Size of the mini-batch 
-            :param dt :                         (float) Timestep
-
-        :input w_S :                            (float) Sobolev-training weight
-    '''
-
+    def __init__(self, env, conf):
         self.env = env
         self.conf = conf
-        self.w_S = w_S
         self.MSE = WeightedMSELoss()
+        self.batch_size = conf.BATCH_SIZE
         return
+
     
-    def weightCopy(self, model, weights):
-        '''
-        Copies the given weights from the TF model into the pytorch model
-        '''
-        index = 0
-        for layer in model:
-            if isinstance(layer, nn.Linear) or isinstance(layer, Siren):
-                # Extract the weight and bias arrays
-                weight_array = torch.t(torch.tensor(weights[index][0]))
-                bias_array = torch.t(torch.tensor(weights[index][1]))
-                
-                # Set weights
-                with torch.no_grad():
-                    layer.weight.copy_(weight_array)
-                    layer.bias.copy_(bias_array)
-                    
-                # Move to the next set of weights
-                index += 1
-        return model
-    
-    def create_actor(self, weights=None):
-        ''' Create actor NN '''
-        #Tested Successfully#
+    def create_actor(self):
         model = nn.Sequential(
             nn.Linear(self.conf.nb_state, self.conf.NH1),
             nn.LeakyReLU(negative_slope=0.3),
@@ -89,18 +37,14 @@ class NN:
             nn.LeakyReLU(negative_slope=0.3),
             nn.Linear(self.conf.NH2, self.conf.na)
         )
-        if weights is not None:
-            model = self.weightCopy(model, weights)
-        else:
-            for layer in model:
-                if isinstance(layer, nn.Linear):
-                    nn.init.xavier_uniform_(layer.weight)
-                    nn.init.constant_(layer.bias, 0)
+
+        for layer in model:
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+                nn.init.constant_(layer.bias, 0)
         return model.to(torch.float32)
 
-    def create_critic_elu(self, weights=None): 
-        ''' Create critic NN - elu'''
-        #Tested Successfully#
+    def create_critic_elu(self): 
         model = nn.Sequential(
             nn.Linear(self.conf.nb_state, 16),
             nn.ELU(),
@@ -112,18 +56,15 @@ class NN:
             nn.ELU(),
             nn.Linear(256, 1)
         )
-        if weights is not None:
-            model = self.weightCopy(model, weights)
-        else:
-            for layer in model:
-                if isinstance(layer, nn.Linear):
-                    nn.init.xavier_uniform_(layer.weight)
-                    nn.init.constant_(layer.bias, 0)
+
+        for layer in model:
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+                nn.init.constant_(layer.bias, 0)
+
         return model.to(torch.float32)
     
-    def create_critic_sine_elu(self, weights=None): 
-        ''' Create critic NN - elu'''
-        #Tested Successfully#
+    def create_critic_sine_elu(self): 
         model = nn.Sequential(
             Siren(self.conf.nb_state, 64),
             nn.Linear(64, 64),
@@ -133,17 +74,14 @@ class NN:
             nn.ELU(),
             nn.Linear(128,1)
         )
-        if weights is not None:
-            model = self.weightCopy(model, weights)
-        else:
-            for layer in model:
-                if isinstance(layer, nn.Linear):
-                    nn.init.xavier_uniform_(layer.weight)
-                    nn.init.constant_(layer.bias, 0)
+
+        for layer in model:
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+                nn.init.constant_(layer.bias, 0)
         return model.to(torch.float32)
         
-    def create_critic_sine(self, weights=None): 
-        ''' Create critic NN - elu'''
+    def create_critic_sine(self): 
         model = nn.Sequential(
             Siren(self.conf.nb_state, 64),
             Siren(64, 64),
@@ -151,16 +89,12 @@ class NN:
             Siren(128, 128),
             nn.Linear(128, 1)
         )
-        if weights is not None:
-            model = self.weightCopy(model, weights)
-        else:
-            nn.init.xavier_uniform_(model[-1].weight)
-            nn.init.constant_(model[-1].bias, 0)
+
+        nn.init.xavier_uniform_(model[-1].weight)
+        nn.init.constant_(model[-1].bias, 0)
         return model.to(torch.float32)
         
-    def create_critic_relu(self, weights=None): 
-        ''' Create critic NN - relu'''
-        #Tested Successfully#
+    def create_critic_relu(self): 
         model = nn.Sequential(
             nn.Linear(self.conf.nb_state, 16),
             nn.LeakyReLU(negative_slope=0.3),
@@ -172,18 +106,13 @@ class NN:
             nn.LeakyReLU(negative_slope=0.3),
             nn.Linear(self.conf.NH2, 1)
         )
-        if weights is not None:
-            model = self.weightCopy(model, weights)
-        else:
-            for layer in model:
-                if isinstance(layer, nn.Linear):
-                    nn.init.xavier_uniform_(layer.weight)
-                    nn.init.constant_(layer.bias, 0)
+        for layer in model:
+            if isinstance(layer, nn.Linear):
+                nn.init.xavier_uniform_(layer.weight)
+                nn.init.constant_(layer.bias, 0)
         return model.to(torch.float32)
     
     def eval(self, NN, input):
-        ''' Compute the output of a NN given an input '''
-        #Tested Successfully#
         if not torch.is_tensor(input):
             if isinstance(input, list):
                 input = np.array(input)
@@ -193,46 +122,27 @@ class NN:
             input = normalize_tensor(input, torch.tensor(self.conf.state_norm_arr, dtype=torch.float32))
 
         return NN(input)
+     
     
-    def custom_logarithm(self,input):
-        #Tested Successfully#
-        # Calculate the logarithms based on the non-zero condition
-        positive_log = torch.log(torch.maximum(input, torch.tensor(1e-7)) + 1)
-        negative_log = -torch.log(torch.maximum(-input, torch.tensor(1e-7)) + 1)
+    def compute_critic_grad(self, critic_model, target_critic, state_batch, 
+                            state_next_rollout_batch, partial_reward_to_go_batch, d_batch,
+                            weights_batch):
+        # compute cost-to-go
+        if self.conf.MC:
+            reward_to_go_batch = partial_reward_to_go_batch
+        else:
+            reward_to_go_batch = partial_reward_to_go_batch +\
+                (1 - d_batch) * self.eval(target_critic, state_next_rollout_batch)
 
-        # Use the appropriate logarithm based on the condition
-        result = torch.where(input > 0, positive_log, negative_log)
-
-        return result    
-    
-    def compute_critic_grad(self, critic_model, target_critic, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch):
-        ''' Compute the gradient of the critic NN. Does not return the critic gradients since 
-        they will be present in .grad attributes of the critic_model after execution.'''
-        reward_to_go_batch = partial_reward_to_go_batch if self.conf.MC else partial_reward_to_go_batch + (1 - d_batch) * self.eval(target_critic, state_next_rollout_batch)
-
-        critic_model.zero_grad()
+        # compute mse between cost-to-go and V
         critic_value = self.eval(critic_model, state_batch)
         critic_loss = self.MSE(reward_to_go_batch, critic_value, weights=weights_batch)
-        
-        total_loss = critic_loss
         critic_model.zero_grad()
-        total_loss.backward()
+        critic_loss.backward()
 
         return reward_to_go_batch, critic_value, self.eval(target_critic, state_batch)
 
-    def compute_actor_grad(self, actor_model, critic_model, state_batch, batch_size):
-        ''' 
-        Compute and apply the gradient of the actor NN. Does not return anything since the 
-        gradients will be present in .grad attributes of the actor_model after execution.
-        '''
-        #NOTE: This function was tested against its tensorflow equivalent, and it produced 
-        #gradients exactly 10 times larger. All intermediate values are the same. Requires
-        #further investigation (could be the cause of the large errors). Also, regularization
-        #was added
-        actor_model.zero_grad()
-        if batch_size is None:
-            batch_size = self.conf.BATCH_SIZE
-
+    def compute_actor_grad(self, actor_model, critic_model, state_batch):
         actions = self.eval(actor_model, state_batch)
 
         # Both take into account normalization, ds_next_da is the gradient of the dynamics w.r.t. policy actions (ds'_da)
@@ -258,10 +168,10 @@ class NN:
                                     grad_outputs=torch.ones_like(rewards_tf),
                                     create_graph=True)[0]
 
-        dr_da_reshaped = dr_da.view(batch_size, 1, self.conf.na)
+        dr_da_reshaped = dr_da.view(self.batch_size, 1, self.conf.na)
 
         # dr_ds' + dV_ds' (note: dr_ds' = 0)
-        dQ_ds_next = dV_ds_next.view(batch_size, 1, self.conf.nb_state)
+        dQ_ds_next = dV_ds_next.view(self.batch_size, 1, self.conf.nb_state)
 
         # (dr_ds' + dV_ds')*ds'_da
         dQ_ds_next_da = torch.bmm(dQ_ds_next, ds_next_da)
@@ -271,8 +181,8 @@ class NN:
 
         # Multiply -[(dr_ds' + dV_ds')*ds'_da + dr_da] by the actions a
         actions = self.eval(actor_model, state_batch)
-        actions_reshaped = actions.view(batch_size, self.conf.na, 1)
-        dQ_da_reshaped = dQ_da.view(batch_size, 1, self.conf.na)
+        actions_reshaped = actions.view(self.batch_size, self.conf.na, 1)
+        dQ_da_reshaped = dQ_da.view(self.batch_size, 1, self.conf.na)
         #Q_neg = torch.bmm(-dQ_da_reshaped, actions_reshaped)
         Q_neg = torch.matmul(-dQ_da_reshaped, actions_reshaped)
 
@@ -284,15 +194,14 @@ class NN:
         actor_model.zero_grad()
         #actor_grad = torch.autograd.grad(mean_Qneg, actor_model.parameters())
         total_loss.backward()
-        for param in actor_model.parameters():
-            if param.grad is not None:
-                param.grad.data /= 10
+        # for param in actor_model.parameters():
+        #     if param.grad is not None:
+        #         param.grad.data /= 10
         #actor_grad = [param.grad for param in actor_model.parameters()]
         #print()
         #return actor_grad
 
     def compute_reg_loss(self, model, actor):
-        '''Computes L1 and L2 regularization losses for weights and biases'''
         #NOTE: layers in the original tf code were using kreg_l2_C (from self.conf) for all regularization parameters. 
         #This doesn't make sense and was changed here. Also, the original codebase used the keras 
         #bias_regularizer and kernel_regularizer variables, but never accessed the actor_model.losses

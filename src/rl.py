@@ -19,8 +19,7 @@ class RL_AC:
         self.NSTEPS_SH = 0
         return
     
-    def setup_model(self, recover_training=None, weights=None):
-        ''' Setup RL model '''
+    def setup_model(self, recover_training=None):
         # Create actor, critic and target NNs
         critic_funcs = {
             'elu': self.NN.create_critic_elu,
@@ -28,32 +27,25 @@ class RL_AC:
             'sine-elu': self.NN.create_critic_sine_elu,
             'relu': self.NN.create_critic_relu
         }
-        if weights is not None:
-            self.actor_model = self.NN.create_actor(weights = weights[0])
-            self.critic_model = critic_funcs[self.conf.critic_type](weights = weights[1])
-            self.target_critic = critic_funcs[self.conf.critic_type](weights = weights[2])
-        else:
-            self.actor_model = self.NN.create_actor()
-            self.critic_model = critic_funcs[self.conf.critic_type]()
-            self.target_critic = critic_funcs[self.conf.critic_type]()
+        self.actor_model = self.NN.create_actor()
+        self.critic_model = critic_funcs[self.conf.critic_type]()
+        self.target_critic = critic_funcs[self.conf.critic_type]()
 
         # Initialize optimizers
         self.critic_optimizer   = torch.optim.Adam(self.critic_model.parameters(), eps = 1e-7,\
             lr = self.conf.CRITIC_LEARNING_RATE)
         self.actor_optimizer    = torch.optim.Adam(self.actor_model.parameters(), eps = 1e-7,\
             lr = self.conf.ACTOR_LEARNING_RATE)
-        # Set lr schedulers
+        
+        # Set lr schedulers (piecewise constant delay schedule)
         if self.conf.LR_SCHEDULE:
-            # Piecewise constant decay schedule
-            #NOTE: not sure about epochs used in 'milestones' variable
             self.CRITIC_LR_SCHEDULE = torch.optim.lr_scheduler.MultiStepLR(self.critic_optimizer, milestones =\
                  self.conf.values_schedule_LR_C, gamma = 0.5)
             self.ACTOR_LR_SCHEDULE  = torch.optim.lr_scheduler.MultiStepLR(self.actor_optimizer, milestones =\
                 self.conf.values_schedule_LR_A, gamma = 0.5)
 
-        # Set initial weights of the NNs
+        #  Recover weights
         if recover_training is not None: 
-            #NOTE: this was not tested
             NNs_path_rec = str(recover_training[0])
             N_try = recover_training[1]
             update_step_counter = recover_training[2]   
@@ -63,9 +55,8 @@ class RL_AC:
         else:
             self.target_critic.load_state_dict(self.critic_model.state_dict())   
 
-    def update(self, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch,\
-        batch_size=None):
-        ''' Update both critic and actor '''
+
+    def update(self, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch):
         # Update the critic by backpropagating the gradients
         self.critic_optimizer.zero_grad()
         reward_to_go_batch, critic_value, target_critic_value = self.NN.compute_critic_grad(self.critic_model,\
@@ -74,7 +65,7 @@ class RL_AC:
         
         # Update the actor by backpropagating the gradients
         self.actor_optimizer.zero_grad()
-        self.NN.compute_actor_grad(self.actor_model, self.critic_model, state_batch, batch_size)
+        self.NN.compute_actor_grad(self.actor_model, self.critic_model, state_batch)
 
         self.actor_optimizer.step()  # Update the weights
         if self.conf.LR_SCHEDULE:
@@ -84,15 +75,12 @@ class RL_AC:
         return reward_to_go_batch, critic_value, target_critic_value
         
     def update_target(self, target_weights, weights):
-        ''' Update target critic NN '''
         tau = self.conf.UPDATE_RATE
         with torch.no_grad():
             for target_param, param in zip(target_weights, weights):
                 target_param.data.copy_(param.data * tau + target_param.data * (1 - tau))
 
     def learn_and_update(self, update_step_counter, buffer, ep):
-        #Tested Successfully# Although only for one iteration (?)
-        ''' Sample experience and update buffer priorities and NNs '''
         times_sample = np.zeros(int(self.conf.UPDATE_LOOPS[ep]))
         times_update = np.zeros(int(self.conf.UPDATE_LOOPS[ep]))
         times_update_target = np.zeros(int(self.conf.UPDATE_LOOPS[ep]))
@@ -131,13 +119,13 @@ class RL_AC:
         next_arr = np.zeros((NSTEPS_SH + 1, self.conf.nb_state))
         go_arr = np.empty(NSTEPS_SH + 1)
         done_arr = np.zeros(NSTEPS_SH + 1)
-        ee_arr = np.empty((NSTEPS_SH + 1, 3))
+        # ee_arr = np.empty((NSTEPS_SH + 1, 3))
 
         # start RL episode
         for t in range(NSTEPS_SH):
             u = TO_controls[t if t < NSTEPS_SH - 1 else t - 1]
             TO_states[t + 1], rwrd_arr[t] = self.env.step(TO_states[t], u)
-            ee_arr[t + 1] = self.env.ee(TO_states[t + 1])
+            # ee_arr[t + 1] = self.env.ee(TO_states[t + 1])
         rwrd_arr[-1] = self.env.reward(TO_states[-1])
 
         # compute partial cost-to-go (n-step TD or monte carlo)
@@ -147,7 +135,7 @@ class RL_AC:
             if not self.conf.MC and final < NSTEPS_SH:
                 next_arr[i] = TO_states[final + 1]
             go_arr[i] = rwrd_arr[i:final + 1].sum()
-        return TO_states, go_arr, next_arr, done_arr, rwrd_arr, ee_arr
+        return TO_states, go_arr, next_arr, done_arr, rwrd_arr
     
     def RL_save_weights(self, update_step_counter='final'):
         actor_model_path = f"{self.conf.NNs_path}/N_try_{self.N_try}/actor_{update_step_counter}.pth"
