@@ -50,6 +50,7 @@ if __name__ == '__main__':
         buffer.add(states, partial_rewards, state_nexts, dones)
 
         # Update nns and record rewards
+        num_success = len(valid_samples)
         update_step_counter = trainer.learn_and_update(update_step_counter, buffer, ep)
         ep_reward_arr[ep_arr_idx : ep_arr_idx + num_success] = rewards
         ep_arr_idx += num_success
