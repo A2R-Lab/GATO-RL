@@ -20,144 +20,122 @@ class RLTrainer:
     
     def setup_model(self, recover_training=None):
         # Create actor, critic and target NNs
-        critic_funcs = {
-            'elu': self.NN.create_critic_elu,
-            'sine': self.NN.create_critic_sine,
-            'sine-elu': self.NN.create_critic_sine_elu,
-            'relu': self.NN.create_critic_relu
-        }
         self.actor_model = self.NN.create_actor()
-        self.critic_model = critic_funcs[self.conf.critic_type]()
-        self.target_critic = critic_funcs[self.conf.critic_type]()
+        self.critic_model = self.NN.create_critic_sine()
+        self.target_critic = self.NN.create_critic_sine()
 
-        # Initialize optimizers
-        self.critic_optimizer   = torch.optim.Adam(self.critic_model.parameters(), eps = 1e-7,\
-            lr = self.conf.CRITIC_LEARNING_RATE)
-        self.actor_optimizer    = torch.optim.Adam(self.actor_model.parameters(), eps = 1e-7,\
-            lr = self.conf.ACTOR_LEARNING_RATE)
+        self.actor_optimizer = torch.optim.Adam(
+            self.actor_model.parameters(), lr=self.conf.ACTOR_LEARNING_RATE, eps=1e-7)
+        self.critic_optimizer = torch.optim.Adam(
+            self.critic_model.parameters(), lr=self.conf.CRITIC_LEARNING_RATE, eps=1e-7)
 
         #  Recover weights
-        if recover_training is not None: 
-            NNs_path_rec = str(recover_training[0])
-            N_try = recover_training[1]
-            update_step_counter = recover_training[2]   
-            self.actor_model.load_state_dict(torch.load(f"{NNs_path_rec}/N_try_{N_try}/actor_{update_step_counter}.pth"))
-            self.critic_model.load_state_dict(torch.load(f"{NNs_path_rec}/N_try_{N_try}/critic_{update_step_counter}.pth"))
-            self.target_critic.load_state_dict(torch.load(f"{NNs_path_rec}/N_try_{N_try}/target_critic_{update_step_counter}.pth"))
+        if recover_training is not None:
+            path, N_try, step = recover_training
+            self.actor_model.load_state_dict(torch.load(f"{path}/N_try_{N_try}/actor_{step}.pth"))
+            self.critic_model.load_state_dict(torch.load(f"{path}/N_try_{N_try}/critic_{step}.pth"))
+            self.target_critic.load_state_dict(torch.load(f"{path}/N_try_{N_try}/target_critic_{step}.pth"))
         else:
             self.target_critic.load_state_dict(self.critic_model.state_dict())   
 
-
-    def update(self, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch):
-        # Update the critic by backpropagating the gradients
+    def update(self, states, next_states, partial_rtg, dones, weights):
+        # update critic
         self.critic_optimizer.zero_grad()
-        reward_to_go_batch, critic_value, target_critic_value = self.NN.compute_critic_grad(self.critic_model,\
-            self.target_critic, state_batch, state_next_rollout_batch, partial_reward_to_go_batch, d_batch, weights_batch)
-        self.critic_optimizer.step()  # Update the weights
-        
-        # Update the actor by backpropagating the gradients
+        rtg, values, target_values = self.NN.compute_critic_grad(
+            self.critic_model, self.target_critic,
+            states, next_states, partial_rtg, dones, weights
+        )
+        self.critic_optimizer.step()
+
+        # update actor
         self.actor_optimizer.zero_grad()
-        self.NN.compute_actor_grad(self.actor_model, self.critic_model, state_batch)
+        self.NN.compute_actor_grad(self.actor_model, self.critic_model, states)
+        self.actor_optimizer.step()
 
-        self.actor_optimizer.step()  # Update the weights
-        if self.conf.LR_SCHEDULE:
-            self.ACTOR_LR_SCHEDULE.step()
-            self.CRITIC_LR_SCHEDULE.step()
+        return rtg, values, target_values
 
-        return reward_to_go_batch, critic_value, target_critic_value
-        
-    def update_target(self, target_weights, weights):
+    def update_target(self, target_params, source_params):
         tau = self.conf.UPDATE_RATE
         with torch.no_grad():
-            for target_param, param in zip(target_weights, weights):
-                target_param.data.copy_(param.data * tau + target_param.data * (1 - tau))
+            for t, s in zip(target_params, source_params):
+                t.data.copy_(tau * s.data + (1 - tau) * t.data)
 
-    def learn_and_update(self, update_step_counter, buffer, ep):
-        times_sample = np.zeros(int(self.conf.UPDATE_LOOPS[ep]))
-        times_update = np.zeros(int(self.conf.UPDATE_LOOPS[ep]))
-        times_update_target = np.zeros(int(self.conf.UPDATE_LOOPS[ep]))
-        for i in range(int(self.conf.UPDATE_LOOPS[ep])):
-            # Sample batch of transitions from the buffer
-            st = time.time()
-            state_batch, partial_reward_to_go_batch, state_next_rollout_batch, d_batch, weights_batch, batch_idxes =\
-                buffer.sample()
-            et = time.time()
-            times_sample[i] = et-st
-            
-            # Update both critic and actor
-            st = time.time()
-            reward_to_go_batch, critic_value, target_critic_value = self.update(state_batch, state_next_rollout_batch,\
-                partial_reward_to_go_batch, d_batch, weights_batch)
-            et = time.time()
-            times_update[i] = et-st
+    def learn_and_update(self, step_counter, buffer, ep):
+        t_sample, t_update, t_target = [], [], []
 
-            # Update target critic
+        for _ in range(int(self.conf.UPDATE_LOOPS[ep])):
+            # sample from buffer
+            t0 = time.time()
+            s, prtg, s_next, d, w = buffer.sample()
+            t_sample.append(time.time() - t0)
+
+            # update critic and actor
+            t1 = time.time()
+            rtg, values, target_values = self.update(s, s_next, prtg, d, w)
+            t_update.append(time.time() - t1)
+
+            # update target critic
             if not self.conf.MC:
-                st = time.time()
+                t2 = time.time()
                 self.update_target(self.target_critic.parameters(), self.critic_model.parameters())
-                et = time.time()
-                times_update_target[i] = et-st
+                t_target.append(time.time() - t2)
 
-            update_step_counter += 1
+            step_counter += 1
 
-        print(f"Sample times - Avg: {np.mean(times_sample)}; Max:{np.max(times_sample)}; Min: {np.min(times_sample)}\n")
-        print(f"Update times - Avg: {np.mean(times_update)}; Max:{np.max(times_update)}; Min: {np.min(times_update)}\n")
-        print(f"Target Update times - Avg: {np.mean(times_update_target)}; Max:{np.max(times_update_target)}; Min: {np.min(times_update_target)}\n")
-        return update_step_counter
-    
-    def RL_Solve(self, TO_controls, TO_states):
-        NSTEPS_SH = self.conf.NSTEPS - int(TO_states[0, -1] / self.conf.dt)
-        rwrd_arr = np.empty(NSTEPS_SH + 1)
-        next_arr = np.zeros((NSTEPS_SH + 1, self.conf.nb_state))
-        go_arr = np.empty(NSTEPS_SH + 1)
-        done_arr = np.zeros(NSTEPS_SH + 1)
-        # ee_arr = np.empty((NSTEPS_SH + 1, 3))
+        print(f"Sample time avg: {np.mean(t_sample):.4f}s")
+        print(f"Update time avg: {np.mean(t_update):.4f}s")
+        print(f"Target update time avg: {np.mean(t_target):.4f}s")
+        return step_counter
+
+    def RL_Solve(self, actions, states):
+        n = self.conf.NSTEPS - int(states[0, -1] / self.conf.dt)
+        rewards = np.empty(n + 1)
+        next_states = np.zeros((n + 1, self.conf.state_dim))
+        dones = np.zeros(n + 1)
 
         # start RL episode
-        for t in range(NSTEPS_SH):
-            u = TO_controls[t if t < NSTEPS_SH - 1 else t - 1]
-            TO_states[t + 1], rwrd_arr[t] = self.env.step(TO_states[t], u)
-            # ee_arr[t + 1] = self.env.ee(TO_states[t + 1])
-        rwrd_arr[-1] = self.env.reward(TO_states[-1])
+        for t in range(n):
+            u = actions[t if t < n - 1 else t - 1]
+            states[t + 1], rewards[t] = self.env.step(states[t], u)
+        rewards[-1] = self.env.reward(states[-1])
 
-        # compute partial cost-to-go (n-step TD or monte carlo)
-        for i in range(NSTEPS_SH + 1):
-            final = NSTEPS_SH if self.conf.MC else min(i + self.conf.nsteps_TD_N, NSTEPS_SH)
-            done_arr[i] = int(self.conf.MC or final == NSTEPS_SH)
-            if not self.conf.MC and final < NSTEPS_SH:
-                next_arr[i] = TO_states[final + 1]
-            go_arr[i] = rwrd_arr[i:final + 1].sum()
-        return TO_states, go_arr, next_arr, done_arr, rwrd_arr
+        # compute partial cost-to-go
+        rtg = np.array([rewards[i:min(i + self.conf.nsteps_TD_N, n)].sum()
+                        for i in range(n + 1)])
+        for i in range(n + 1):
+            done = self.conf.MC or i + self.conf.nsteps_TD_N >= n
+            dones[i] = int(done)
+            if not done:
+                next_states[i] = states[i + self.conf.nsteps_TD_N]
+
+        return states, rtg, next_states, dones, rewards
     
-    def RL_save_weights(self, update_step_counter='final'):
-        actor_model_path = f"{self.conf.NNs_path}/N_try_{self.N_try}/actor_{update_step_counter}.pth"
-        critic_model_path = f"{self.conf.NNs_path}/N_try_{self.N_try}/critic_{update_step_counter}.pth"
-        target_critic_path = f"{self.conf.NNs_path}/N_try_{self.N_try}/target_critic_{update_step_counter}.pth"
+    def RL_save_weights(self, step='final'):
+            path = f"{self.conf.NNs_path}/N_try_{self.N_try}"
+            torch.save(self.actor_model.state_dict(), f"{path}/actor_{step}.pth")
+            torch.save(self.critic_model.state_dict(), f"{path}/critic_{step}.pth")
+            torch.save(self.target_critic.state_dict(), f"{path}/target_critic_{step}.pth")
 
-        # Save model weights
-        torch.save(self.actor_model.state_dict(), actor_model_path)
-        torch.save(self.critic_model.state_dict(), critic_model_path)
-        torch.save(self.target_critic.state_dict(), target_critic_path)
-
-    def create_TO_init(self, ep, ICS):
-        init_rand_state = ICS    
-        NSTEPS_SH = self.conf.NSTEPS - int(init_rand_state[-1]/self.conf.dt)
-        if NSTEPS_SH == 0:
+    def create_TO_init(self, ep, init_state):
+        n = self.conf.NSTEPS - int(init_state[-1] / self.conf.dt)
+        if n <= 0:
             return None, None, None, 0
 
-        # Initialize array to initialize TO state and control variables
-        init_TO_controls = np.zeros((NSTEPS_SH, self.conf.na))
-        init_TO_states = np.zeros(( NSTEPS_SH+1, self.conf.nb_state)) 
-        init_TO_states[0,:] = init_rand_state
+        actions = np.zeros((n, self.conf.na))
+        states = np.zeros((n + 1, self.conf.state_dim))
+        states[0] = init_state
 
-        # Simulate actor's actions to compute trajectory used to initialize TO state variables
-        for i in range(NSTEPS_SH):   
-            init_TO_controls[i,:] = np.zeros(self.conf.na) if ep == 0 else\
-                self.NN.eval(self.actor_model, torch.tensor(np.array([init_TO_states[i,:]]),\
-                dtype=torch.float32)).squeeze().detach().cpu().numpy()
-            print(f"init TO controls {i+1}/{NSTEPS_SH}:  {init_TO_controls[i,:]}")
-            init_TO_states[i+1,:] = self.env.simulate(init_TO_states[i,:],init_TO_controls[i,:])
+        for i in range(n):
+            if ep == 0:
+                actions[i] = np.zeros(self.conf.na)
+            else:
+                state_tensor = torch.tensor(states[i][None], dtype=torch.float32)
+                actions[i] = self.NN.eval(self.actor_model, state_tensor)\
+                                .squeeze().cpu().detach().numpy()
+            print(f"init TO controls {i + 1}/{n}: {actions[i]}")
+            states[i + 1] = self.env.simulate(states[i], actions[i])
 
-            if np.isnan(init_TO_states[i+1,:]).any():
+            if np.isnan(states[i + 1]).any():
                 return None, None, None, 0
-        return init_rand_state, init_TO_states, init_TO_controls, 1
+
+        return init_state, states, actions, 1
