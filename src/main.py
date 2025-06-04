@@ -14,7 +14,7 @@ def compute_sample(args):
     if not success: return None
     TO_states, TO_controls = trajopt.TO_Solve(init_state, init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.RL_Solve(TO_controls, TO_states)
-    return RL_states.tolist(), partial_rtg, next_states, done, rewards
+    return RL_states.tolist(), partial_rtg, next_states, done, sum(rewards)
 
 
 if __name__ == '__main__':
@@ -56,7 +56,7 @@ if __name__ == '__main__':
         ep_arr_idx += num_success
 
         for i in range(len(valid_samples)):
-            print("Episode  {}  --->   Return = {}".format(ep*len(tmp) + i, rewards[i]))
+            print("Episode  {}  --->   Return = {}".format(ep*len(valid_samples) + i, rewards[i]))
 
         if update_step_counter > conf.NUPDATES:
             break
