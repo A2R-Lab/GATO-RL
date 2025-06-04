@@ -1,6 +1,6 @@
 # GATO-RL
 
-Adaptation/simplification of [cacto](https://github.com/gianluigigrandesso/cacto).
+Adaptation/simplification of [cacto](https://github.com/gianluigigrandesso/cacto) in PyTorch and alt. trajectory optimizer software.
 
 # Installation
 ```shell
