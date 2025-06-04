@@ -50,7 +50,7 @@ nb_state = 15
 nx = 14
 nq = 7
 na = 7
-URDF_PATH = os.path.abspath('iiwa.urdf')
+URDF_PATH = os.path.abspath(os.path.join('confs', 'iiwa.urdf'))
 robot = RobotWrapper.BuildFromURDF(URDF_PATH, package_dirs=[os.path.dirname(URDF_PATH)])
 robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
