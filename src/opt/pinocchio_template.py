@@ -8,7 +8,6 @@ from scipy.sparse import bmat, csc_matrix, triu
 import osqp
 
 
-
 class thneed:
 
     def __init__(self, urdf_filename, N=32, dt=0.01, max_qp_iters=1, osqp_warm_start=True):

@@ -5,7 +5,7 @@ import os
 import pinocchio as pin
 
 #-----CACTO params---------------------------------------------------------------------------------
-EP_UPDATE = 200                                                                                    # Number of episodes before updating critic and actor
+EP_UPDATE = 10                                                                                    # Number of episodes before updating critic and actor
 NUPDATES = 100000                                                                                  # Max NNs updates
 UPDATE_LOOPS = np.arange(1000, 48000, 3000)                                                        # Number of updates of both critic and actor performed every EP_UPDATE episodes                                                                                
 NEPISODES = int(EP_UPDATE*len(UPDATE_LOOPS))                                                       # Max training episodes

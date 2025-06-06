@@ -40,6 +40,7 @@ if __name__ == '__main__':
     # -----Episode loop----------------------------------------------------------------------------
     for ep in range(conf.NLOOPS):
         # collect samples
+        print("Collecting samples...")
         init_rand_state = env.reset_batch(conf.EP_UPDATE)
         samples = [compute_sample((ep, init_rand_state[i, :], env)) for i in range(conf.EP_UPDATE)]
         valid_samples = [sample for sample in samples if sample]

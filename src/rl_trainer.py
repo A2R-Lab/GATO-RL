@@ -39,6 +39,9 @@ class RLTrainer:
             self.target_critic.load_state_dict(self.critic_model.state_dict())   
 
     def update(self, states, next_states, partial_rtg, dones, weights):
+        '''
+        Update both actor and critic networks
+        '''
         # update critic
         self.critic_optimizer.zero_grad()
         rtg, values, target_values = self.NN.compute_critic_grad(
@@ -55,6 +58,9 @@ class RLTrainer:
         return rtg, values, target_values
 
     def update_target(self, target_params, source_params):
+        '''
+        Update target critic network parameters.
+        '''
         tau = self.conf.UPDATE_RATE
         with torch.no_grad():
             for t, s in zip(target_params, source_params):
@@ -132,7 +138,7 @@ class RLTrainer:
                 state_tensor = torch.tensor(states[i][None], dtype=torch.float32)
                 actions[i] = self.NN.eval(self.actor_model, state_tensor)\
                                 .squeeze().cpu().detach().numpy()
-            print(f"init TO controls {i + 1}/{n}: {actions[i]}")
+            print(f"init TO controls {i + 1}/{n}: {actions[i]}", end='\r')
             states[i + 1] = self.env.simulate(states[i], actions[i])
 
             if np.isnan(states[i + 1]).any():
