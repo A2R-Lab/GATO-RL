@@ -5,7 +5,7 @@ import os
 import pinocchio as pin
 
 #-----CACTO params---------------------------------------------------------------------------------
-EP_UPDATE = 10                                                                                    # Number of episodes before updating critic and actor
+EP_UPDATE = 10                                                                                     # Number of episodes before updating critic and actor
 NUPDATES = 100000                                                                                  # Max NNs updates
 UPDATE_LOOPS = np.arange(1000, 48000, 3000)                                                        # Number of updates of both critic and actor performed every EP_UPDATE episodes                                                                                
 NEPISODES = int(EP_UPDATE*len(UPDATE_LOOPS))                                                       # Max training episodes
@@ -59,18 +59,34 @@ end_effector_frame_id = 'iiwa_link_7'
 class Env:
     def __init__(self, conf):
         self.conf = conf
-        self.nq = conf.nq
-        self.nx = conf.nx
-        self.na = conf.na
+        self.nq = conf.nq # Number of joints in the robot (7 for iiwa)
+        self.nx = conf.nx # Number of state variables (14 for iiwa: 7 joint positions + 7 velocities)
+        self.na = conf.na # Number of actuators/control inputs (equal to nq since 7 actuated joints)
         self.TARGET_STATE = conf.goal_ee
 
     def reset_batch(self, batch_size):
+        """
+        Reset the environment to a random initial state for a batch of size `batch_size`.
+        This generates 10 different intial states for the robot, each with a random time value.
+
+        TODO: Need to ask Seyoung why do we initialize a random time value here.
+        """
+        # Generate random time values for each episode in the batch
+        # These represent how much time has elapsed since episode start (0 to max episode time)
         times = np.random.uniform(self.conf.x_init_min[-1], self.conf.x_init_max[-1], batch_size)
+        
+        # Generate random robot configurations (joint positions + velocities) for each episode
+        # Shape: (batch_size, 14) where 14 = 7 joint positions + 7 joint velocities
         states = np.random.uniform(self.conf.x_init_min[:-1], self.conf.x_init_max[:-1],
                                     size=(batch_size, len(self.conf.x_init_max[:-1])))
+        
+        # Quantize the continuous time values to discrete timesteps aligned with dt
+        # This ensures all time values are multiples of dt (e.g., 0.00, 0.01, 0.02, etc.)
         times_int = np.expand_dims(self.conf.dt*np.round(times/self.conf.dt), axis=1)
+        
+        # Combine robot states with their corresponding time values
+        # Final shape: (batch_size, 15) where 15 = 14 state variables + 1 time variable
         return np.hstack((states, times_int))
-
 
     def simulate(self, state, action):
         state_next = np.zeros(self.nx+1)
