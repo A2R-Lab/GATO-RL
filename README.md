@@ -5,7 +5,9 @@ To understand the codebase, we recommend starting at ```src/main.py```. The diag
 
 - $s_t$: state at time $t$
 - $a_t$: action at time $t$
-- $r_t$: partial reward-to-go at time $t$
+- $r_t$: partial reward-to-go at time $t$.
+  - If Monte-Carlo, $r_t$ is the sum of future rewards until $T$, the end of the trajectory: $r_t = \sum_{k=t}^{T} R_k$.
+  - If n-step Temporal Difference, $r_t$ is the sum of the $n$ next steps' rewards: $r_t = \sum_{k=t}^{t+N-1} R_k$.
 - $s_{t+n}$: state at time $t+n$
 - $d_t$: done (if the reward-to-go is complete)
 
