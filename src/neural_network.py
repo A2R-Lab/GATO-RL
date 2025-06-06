@@ -55,6 +55,7 @@ class ActorCriticNet:
         if self.conf.MC:
             full_rtg = partial_rtg
         else:
+            # if n-step TD, add remaining reward-to-go using target critic
             next_vals = self.eval(target_critic, next_states)
             full_rtg = partial_rtg + (1 - dones) * next_vals
 

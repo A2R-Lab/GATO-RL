@@ -93,19 +93,19 @@ class RLTrainer:
         print(f"Target update time avg: {np.mean(t_target):.4f}s")
         return step_counter
 
-    def RL_Solve(self, actions, states):
+    def compute_partial_rtg(self, actions, states):
         n = self.conf.NSTEPS - int(states[0, -1] / self.conf.dt)
         rewards = np.empty(n + 1)
         next_states = np.zeros((n + 1, self.conf.state_dim))
         dones = np.zeros(n + 1)
 
-        # start RL episode
+        # rollout and get per-step rewards
         for t in range(n):
             u = actions[t if t < n - 1 else t - 1]
             states[t + 1], rewards[t] = self.env.step(states[t], u)
         rewards[-1] = self.env.reward(states[-1])
 
-        # compute partial cost-to-go
+        # compute partial reward-to-go
         rtg = np.array([rewards[i:min(i + self.conf.nsteps_TD_N, n)].sum()
                         for i in range(n + 1)])
         for i in range(n + 1):
