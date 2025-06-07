@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pendulum
+from scipy import sparse
 
 from qpsolvers import solve_qp, Problem, solve_problem
 
@@ -61,6 +62,8 @@ class PendulumEnv:
         self.TARGET_STATE = np.array([[np.pi], [0.0]])  # Target state (pendulum upright position)
         self.num_vars = self.N * (self.nx + self.nu) # Total number of variables in trajectory
         self.num_eq_constraints = num_eq_constraints  # Number of equality constraints
+        self.u_min = 10
+        self.u_max = 10
 
     def running_cost(self, x):
         """
@@ -214,6 +217,8 @@ class PendulumEnv:
 
         NOTE:
         p_sol = [p_k, p_lambda]^T
+        which is both the solution to the KKT system
+        and the Lagrange multipliers
         """
         grad_f = self.grad_running_cost(x)
         H = self.hess_running_cost(x)
@@ -235,7 +240,8 @@ class PendulumEnv:
     def get_amnt_constr_violation(self, x):
         """
         Compute the sum of the absolute values of the equality constraints
-        NOTE: x = [theta_0, w_0, u_0, ..., theta_N, w_N, u_N]^T
+
+        The goal is to drive this down to zero!
         """
         theta = x[0::3] # extract every third element from x starting from index 0
         w     = x[1::3]
@@ -308,7 +314,7 @@ class PendulumEnv:
             while not accept_step:
                 if alpha < 1e-5:
                     break
-                # NOTE: (x_guess + alpha * x_guess_dir) has shape ((u_dim+x_dim)*N_timesteps, 1)
+                # NOTE: (x_guess + alpha * x_guess_dir) has shape ((u_dim+x_dim)*self.N, 1)
                 if np.linalg.norm(self.running_cost(x_guess + alpha * x_guess_dir)) < f_best:
                     f_best = self.running_cost(x_guess + alpha * x_guess_dir)
                     accept_step = True
@@ -399,7 +405,238 @@ class PendulumEnv:
                         [.0]])
         pendulum.animate_robot(x_init, pend_us.T)
 
-        print(x_guess.shape)
+        return x_guess
+
+    def create_ineq_constraints(self, x):
+        """
+        Creating inequality bounds on the control u_min <= u_n <= u_max
+        """
+
+        # NOTE: First construct H (which is constant, hence why we make it once out here to save time)
+        # h_n matrix that makes up the big H matrix
+        h_n = np.array([[0, 0,  1],
+                        [0, 0, -1]])
+        p = 2 # since upper and lower bounds on control u
+        H = np.zeros((p*self.N, (x_dim+u_dim)*self.N))
+
+        # Loop over for each block
+        for n in range(self.N):
+            # Cacluate row and col indices for current block
+            row_start = 2*n
+            row_end = row_start + 2
+            col_start = 3*n
+            col_end = col_start + 3
+
+            # Place h_n at diagonals for H
+            H[row_start:row_end, col_start:col_end] = h_n
+
+        # NOTE: Now construct h
+        # extract all the u's from x_guess
+        u = x[2::3].flatten()
+        
+        # interweave the u_max - u_n and u_min + u_n
+        h = np.empty(2*len(u))
+        h[0::2] = self.u_max - u
+        h[1::2] = self.u_min + u
+
+        h = h.reshape(-1, 1)
+
+        return H, h
+    
+    def get_amnt_constr_violation_update_2(self, x):
+        """
+        Compute the sum of the absolute values of the equality constraints
+
+        But now with inequality constraints as well.
+        """
+        theta = x[0::3] # extract every third element from x starting from index 0
+        w     = x[1::3]
+        u     = x[2::3]
+
+        # constraint vector g
+        g = []
+
+        # Compute rest of the entries
+        for i in range(1, self.N):
+            # Two appended due to two equality constraints
+            g.append(theta[i-1] + dt*w[i-1] - theta[i])
+            g.append(w[i-1] + dt*u[i-1] - dt*grav*np.sin(theta[i-1]) - w[i])
+
+        # convert list to numpy vector
+        g = np.array(g).reshape(-1, 1)
+
+        # get absolute value sum of g
+        constr_violation = np.sum(np.abs(g))
+
+        for i in range(len(u)):
+            if u[i] > self.u_max:
+                #print("u_max violated: ", u[i])
+                constr_violation += abs(u[i] - self.u_max)
+            elif u[i] < -self.u_min:
+                constr_violation += abs(u[i] - self.u_min)
+                #print("u_min violated: ", u[i])
+            else:
+                pass
+
+        return constr_violation
+
+    def solve_constrained_SQP(self):    
+        """
+        Main Loop for SQP with Inequality Constraints
+        """
+
+        # Initialize params
+        max_iter = int(100) # Max number of iterations of SQP (NOT timestep of the problem)
+        stop_tol = 1e-5
+        curr_iter = 0
+
+        # Track constraint violation, running cost, and alpha per iteration of the solver
+        constr_viol_list  = np.empty((max_iter, 1))
+        running_cost_list = np.empty((max_iter, 1))
+        alpha_list        = np.empty((max_iter, 1))
+
+        # Initial random guesses
+        # NOTE: make sure the x_guess initial conditions should be theta=0, w=0
+        x_guess = np.zeros(((x_dim + u_dim)*self.N, 1))
+        lambda_guess = np.zeros(((x_dim)*self.N, 1))
+        mu_guess = np.zeros(((x_dim)*self.N, 1))
+        KKT = 1
+
+        # Filter Linear Search!
+        # NOTE: The f_best and c_best should be computed from your initial guess
+        #       not infinity (otherwise it might blow up on the first step)
+        f_best = np.inf #np.linalg.norm(running_cost(x_guess))
+        c_best = np.inf #abs(get_amnt_constr_violation(x_guess))
+        alpha = 1 # initial step size
+        rho = 0.5 # Shrink factor for alpha (step size)
+        accept_step = False # flag for accepting step or not
+
+        grad_f = self.grad_running_cost(x_guess)
+        Hess = self.hess_running_cost(x_guess)
+        g = self.get_linearized_constraints(x_guess)
+        grad_g = self.get_grad_linearized_constraints(x_guess)
+
+        while (c_best > stop_tol or             # Terminate if constraint violations is zero
+            np.linalg.norm(KKT) < stop_tol): # Terminate if nabla_p L is zero
+            if curr_iter >= max_iter:
+                break
+            
+            grad_f = self.grad_running_cost(x_guess)
+            Hess = self.hess_running_cost(x_guess)
+            g = self.get_linearized_constraints(x_guess)
+            grad_g = self.get_grad_linearized_constraints(x_guess)
+            H, h = self.create_ineq_constraints(x_guess)
+
+            # NOTE: Now we're using cvxopt to solve to consider the inequality constraints!
+            problem = Problem(sparse.csr_matrix(Hess), grad_f, 
+                            sparse.csr_matrix(H), h, 
+                            grad_g, g)
+            p_sol = solve_problem(problem, solver="cvxopt")
+            x_guess_dir = p_sol.x
+            lambdas_guess_dir = p_sol.y # NOTE: equality constraints multipliers
+            mus_guess_dir = p_sol.z     # NOTE: inequality constraints multipliers
+
+            # reset alpha and flag for each iteration
+            alpha = 1
+            accept_step = False
+
+            while not accept_step:
+                if alpha < 1e-5:
+                    break
+                # NOTE: Your shape was wrong dummy, the x_guess + alpha*x_guess_dir turned into a matrix
+                #       hence why you need to squeeze() it
+                if self.running_cost(x_guess[:,0] + alpha * x_guess_dir) < f_best:
+                    f_best = self.running_cost(x_guess[:,0] + alpha * x_guess_dir)
+                    accept_step = True
+                if self.get_amnt_constr_violation_update_2(x_guess[:,0] + alpha * x_guess_dir) < c_best:
+                    c_best = abs(self.get_amnt_constr_violation_update_2(x_guess[:,0] + alpha * x_guess_dir))
+                    accept_step = True
+                else:
+                    alpha = alpha * rho
+
+            # Update guesses
+            x_guess = x_guess + alpha*x_guess_dir[:, np.newaxis]
+            lambda_guess = (1-alpha)*lambda_guess + alpha*lambdas_guess_dir
+            mu_guess = (1-alpha)*mu_guess + alpha*mus_guess_dir
+
+            # Record constraint violation, running cost, alpha per iteration
+            constr_viol_list[curr_iter]  = self.get_amnt_constr_violation_update_2(x_guess) #c_best
+            running_cost_list[curr_iter] = self.running_cost(x_guess) #f_best
+            alpha_list[curr_iter]        = alpha
+
+            KKT = grad_f.squeeze() + lambdas_guess_dir @ grad_g
+            print("Curr iter: ", curr_iter, " Cost: ", running_cost_list[curr_iter],
+                " Constraint Violation: ", constr_viol_list[curr_iter])
+            #      "KKT: ", np.linalg.norm(KKT))
+
+            # Move onto next iteration
+            curr_iter += 1
+
+        print("Total iterations: ", curr_iter)
+
+        # Extract values of the pendulum system
+        pend_thetas = x_guess[0:num_vars:(x_dim+u_dim)]
+        pend_ws     = x_guess[1:num_vars:(x_dim+u_dim)]
+        pend_us     = x_guess[2:num_vars:(x_dim+u_dim)]
+
+        plot_flag = True
+        if plot_flag:
+            # Trim arrays for plotting
+            constr_viol_list  = constr_viol_list[:curr_iter]
+            running_cost_list = running_cost_list[:curr_iter]
+            alpha_list        = alpha_list[:curr_iter]
+
+            plt.figure()
+            plt.plot(np.arange(curr_iter), constr_viol_list, label="Constraint Violations")
+            #plt.yscale("log")
+            plt.ylabel('Constrain Violation')
+            plt.xlabel('k iteration')
+            plt.grid()
+            plt.legend()
+
+            plt.figure()
+            plt.plot(np.arange(curr_iter), running_cost_list, label="Running Cost")
+            #plt.yscale("log")
+            plt.ylabel('Running Cost')
+            plt.xlabel('k iteration')
+            plt.grid()
+            plt.legend()
+
+            plt.figure()
+            plt.plot(np.arange(curr_iter), alpha_list, label="Alphas")
+            #plt.yscale("log")
+            plt.ylabel('Alphas')
+            plt.xlabel('k iteration')
+            plt.grid()
+            plt.legend()
+
+            # Plot theta (angle), w (angular velocity), and u (control)
+            plt.figure()
+            plt.plot(np.arange(self.N), pend_thetas, label="theta (angle)")
+            plt.ylabel('theta (angle)')
+            plt.xlabel('timestep')
+            plt.grid()
+            plt.legend()
+
+            plt.figure()
+            plt.plot(np.arange(self.N), pend_ws, label="w (angular velocity)")
+            plt.ylabel('w (angular velocity)')
+            plt.xlabel('timestep')
+            plt.grid()
+            plt.legend()
+
+            plt.figure()
+            plt.plot(np.arange(self.N), pend_us, label="u (control)")
+            plt.ylabel('u (control signal)')
+            plt.xlabel('timestep')
+            plt.grid()
+            plt.legend()
+
+        x_init = np.array([[.0],
+                        [.0]])
+        pendulum.animate_robot(x_init, pend_us.T)
+
+        return x_guess
 
 
 if __name__ == "__main__":
@@ -414,7 +651,7 @@ if __name__ == "__main__":
     # Create pendulum environment and solve SQP system
     print("Creating PendulumEnv and solving SQP system...")
     pend_env = PendulumEnv(None)  # conf parameter not used in this implementation
-    pend_env.solve_unconstrained_SQP()
+    pend_env.solve_constrained_SQP()
     
     # Show all plots
     plt.show()
