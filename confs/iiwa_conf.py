@@ -57,6 +57,12 @@ end_effector_frame_id = 'iiwa_link_7'
 
 #-----env functions--------------------------------------------------------------------------------
 class Env:
+    """
+    This class provides functions related to the dynamics and reward computations, mainly used for
+    computing the reward-to-go (rl_trainer.compute_partial_rtg()) and the actor network update
+    (neural_network.compute_actor_grad()). Also, to create random initial states at each episode
+    for TO to solve.
+    """
     def __init__(self, conf):
         self.conf = conf
         self.nq = conf.nq # Number of joints in the robot (7 for iiwa)
@@ -70,6 +76,12 @@ class Env:
         This generates 10 different intial states for the robot, each with a random time value.
 
         TODO: Need to ask Seyoung why do we initialize a random time value here.
+        Args:
+            batch_size (int): Number of initial states to reset
+
+        Returns:
+            np.ndarray: Array of shape (batch_size, nx+1), where each row is the state
+                        appended by the timestep
         """
         # Generate random time values for each episode in the batch
         # These represent how much time has elapsed since episode start (0 to max episode time)
@@ -89,6 +101,16 @@ class Env:
         return np.hstack((states, times_int))
 
     def simulate(self, state, action):
+        """
+        Simulates one timestep forward given state and action.
+
+        Args:
+            state (np.ndarray): Current state (size nx+1)
+            action (np.ndarray): Control input (size na)
+
+        Returns:
+            np.ndarray: Next state (size nx+1)
+        """
         state_next = np.zeros(self.nx+1)
         q, v = state[:self.nq], state[self.nq:self.nx]
         qdd = pin.aba(self.conf.robot.model, self.conf.robot_data, q, v, action)
@@ -100,15 +122,48 @@ class Env:
         return state_next
     
     def simulate_batch(self, state, action):
+        """
+        Batch version of simulate(), used in neural_network.compute_actor_grad().
+
+        Args:
+            state (np.ndarray): Batch of states with shape (batch_size, nx+1)
+            action (np.ndarray): Batch of actions with shape (batch_size, na)
+
+        Returns:
+            torch.Tensor: Batch of next states with shape (batch_size, nx+1)
+        """
         state_next = np.array([self.simulate(s, a) for s, a in zip(state, action)])
         return torch.tensor(state_next, dtype=torch.float32)
 
     def step(self, state, action):
+        """
+        Takes a step in the environment and computes the immediate reward upon
+        taking the action.
+
+        Args:
+            state (np.ndarray): Current state of shape (nx+1)
+            action (np.ndarray): Control input of shape (na)
+
+        Returns:
+            tuple: (next_state, reward) where
+                next_state (np.ndarray): Simulated next state.
+                reward (float): Immediate reward after taking the action.
+        """
         state_next = self.simulate(state, action)
         reward = self.reward( state, action)
         return (state_next, reward)
     
     def derivative(self, state, action):
+        """
+        Computes the Jacobian of the dynamics w.r.t the control input (ds/da).
+
+        Args:
+            state (np.ndarray): Current state
+            action (np.ndarray): Control input
+
+        Returns:
+            np.ndarray: Derivative matrix (nx+1, na)
+        """
         # Create robot model in Pinocchio with q_init as initial configuration
         q_init = state[:self.nq]
         v_init = state[self.nq:self.nx]
@@ -127,27 +182,46 @@ class Env:
         return Fu
     
     def derivative_batch(self, state, action):
+        """
+        Batch version of derivative(), used in neural_network.compute_actor_grad()
+
+        Args:
+            state (np.ndarray): Batch of states (batch_size, nx+1)
+            action (np.ndarray): Batch of actions (batch_size, na)
+
+        Returns:
+            torch.Tensor: Batch of derivative matrices (batch_size, nx+1, na)
+        """
         Fu = np.array([self.derivative(s, a) for s, a in zip(state, action)])
         return torch.tensor(Fu, dtype=torch.float32)
 
     def ee(self, state, recompute=True):
+        """
+        Computes end-effector position.
+
+        Args:
+            state (np.ndarray): Robot state
+            recompute (bool): Whether to recompute the kinematics
+
+        Returns:
+            np.ndarray: End-effector position
+        """
         q = np.array(state[:self.nq])
         RF = self.conf.robot.model.getFrameId(self.conf.end_effector_frame_id)
         H = self.conf.robot.framePlacement(q.astype(np.float32), RF, recompute)
         return H.translation
-    
-    def ee_batch(self, state_batch):
-        ee_positions = []
-        RF = self.conf.robot.model.getFrameId(self.conf.end_effector_frame_id)
-
-        for state in state_batch:
-            q = np.array(state[:self.nq])
-            H = self.conf.robot.framePlacement(q.astype(np.float32), RF)
-            ee_positions.append(torch.tensor(H.translation, dtype=torch.float32))
-
-        return torch.stack(ee_positions, dim=0)
 
     def reward(self, state, action=None):
+        """
+        Computes reward from state and action, used in compute_partial_rtg().
+
+        Args:
+            state (np.ndarray): Current state.
+            action (np.ndarray, optional): Control input.
+
+        Returns:
+            float: Reward value.
+        """
         QD_cost, R_cost = 0.0001, 0.0001
         total_cost = -0.5 * QD_cost * np.sum(state[self.nx//2:] ** 2) # v cost
         total_cost += -0.5 * np.sum((self.ee(state) - self.TARGET_STATE) ** 2) # ee pos cost
@@ -158,7 +232,16 @@ class Env:
         return total_cost
     
     def reward_batch(self, state_batch, action_batch=None):
-        ''' Compute reward using tensors. Batch-wise computation '''
+        """
+        Computes batch of rewards using tensors, used in neural_network.compute_actor_grad()
+
+        Args:
+            state_batch (torch.Tensor): Batch of states (batch_size, nx+1)
+            action_batch (torch.Tensor, optional): Batch of actions (batch_size, na)
+
+        Returns:
+            torch.Tensor: Batch of reward values (batch_size,)
+        """
         QD_cost, R_cost = 0.0001, 0.0001
         total_cost = -0.5 * QD_cost * torch.sum(state_batch[:, self.nx//2:]**2, dim=1) # v cost
 
@@ -172,6 +255,16 @@ class Env:
         return total_cost.unsqueeze(1)
 
     def cost(self, state, action):
+        """
+        Computes total cost (non-negative) used for optimization.
+
+        Args:
+            state (np.ndarray): Current state.
+            action (np.ndarray): Control input.
+
+        Returns:
+            float: Total cost.
+        """
         QD_cost, R_cost = 0.0001, 0.0001
         total_cost = 0.5 * QD_cost * np.sum(state[self.nx//2:] ** 2) # velocity cost
         total_cost += 0.5 * R_cost * np.sum(action ** 2) # v`` control cost
