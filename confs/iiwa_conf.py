@@ -37,6 +37,7 @@ breg_l2_C = 1e-2                                                                
 
 #-----TO params------------------------------------------------------------------------------------
 dt = 0.01
+# Minimum and maximum values for the initial state vector + time
 x_init_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,
                     1.57,1.57,1.57,1.57,1.57,1.57,1.57,0])
 x_init_max = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,
@@ -62,6 +63,8 @@ class Env(BaseEnv):
         self.goal_ee = conf.goal_ee
 
     def reset_batch(self, batch_size):
+        # NOTE: since the state vector has the time as the last element,
+        # we generate random times and states separately, then concatenate them.
         times = np.random.uniform(self.conf.x_init_min[-1], self.conf.x_init_max[-1], batch_size)
         states = np.random.uniform(
             self.conf.x_init_min[:-1], self.conf.x_init_max[:-1],

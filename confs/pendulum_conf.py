@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pendulum
 from scipy import sparse
-
+from base_env import BaseEnv
 from qpsolvers import solve_qp, Problem, solve_problem
 
 """
@@ -33,8 +33,22 @@ pendulum.animate_robot(x_init, controls.T)
 # TODO: fill out NN parameters for pendulum case
 
 #-----TO params------------------------------------------------------------------------------------
-dt = pendulum.dt
-N = 300 # Number of time steps
+dt = pendulum.dt # dt=0.01
+N = 300 # Number of time steps, i.e. max episode length
+
+# Min & max values for initial state vector + timestep
+x_init_min = np.array([[0.0],  # Initial angle (theta)
+                       [0.0],  # Initial angular velocity (w)
+                       [0.0]]) # Initial timestep
+
+# Final state vector + timestep
+x_init_max = np.array([[np.pi], # Final angle (theta)
+                       [0.0],   # Final angular velocity (w)
+                       [N*dt]]) # Final timestep
+
+# Desired goal state for the pendulum
+goal_state = np.array([[np.pi],  # Desired angle (theta)
+                       [0.0]])   # Desired angular velocity (w)
 
 # Dimension of the state vector
 x_dim = 2  # [theta (angle), w (angular velocity)]
@@ -51,7 +65,7 @@ num_eq_constraints = 2 #
 grav = pendulum.g
 
 #-----Pendulum Env & SQP Solver--------------------------------------------------------------------
-class PendulumEnv:
+class PendulumEnv(BaseEnv):
     def __init__(self, conf):
         self.conf = conf
         self.dt = dt # Time step for the simulation
@@ -59,7 +73,7 @@ class PendulumEnv:
         self.nq = 1 # Number of joints (1 for pendulum)
         self.nx = x_dim # Number of state variables (1 joint position + 1 joint velocity)
         self.nu = u_dim # Number of actuators (1 for pendulum torque)
-        self.TARGET_STATE = np.array([[np.pi], [0.0]])  # Target state (pendulum upright position)
+        self.goal_state = goal_state  # Target state (pendulum upright position)
         self.num_vars = self.N * (self.nx + self.nu) # Total number of variables in trajectory
         self.num_eq_constraints = num_eq_constraints  # Number of equality constraints
         self.u_min = 10
@@ -84,7 +98,7 @@ class PendulumEnv:
         
         # Compute rest of the entries
         for i in range(0, self.N):
-            f.append(10*(theta[i]-np.pi)**2 + 0.1*w[i]**2 + 0.1*u[i]**2)
+            f.append(10*(theta[i]-self.goal_state[0])**2 + 0.1*(w[i]-self.goal_state[1])**2 + 0.1*u[i]**2)
         
         # convert list to numpy vector
         f = np.array(f).reshape(-1, 1)
@@ -94,6 +108,7 @@ class PendulumEnv:
         """
         Get the gradient of the running cost from the given trajectory:
         x = [theta_0, w_0, u_0, ..., theta_N, w_N, u_N]^T
+
         Args:
             x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
         Returns:
@@ -102,8 +117,8 @@ class PendulumEnv:
         grad = np.empty(((self.nx + self.nu)*self.N, 1))
         i = 0 # index to go through
         while i < self.num_vars:
-            grad[i] = 20 * (x[i] - np.pi) # 20(theta_i - pi)
-            grad[i+1] = 0.2 * x[i+1]      # 0.2w_i
+            grad[i] = 20 * (x[i] - self.goal_state[0]) # 20(theta_i - pi)
+            grad[i+1] = 0.2 * (x[i+1] - self.goal_state[1])      # 0.2(w_i - 0)
             grad[i+2] = 0.2 * x[i+2]      # 0.2u_i
             i += x_dim + u_dim
         return grad
@@ -112,6 +127,7 @@ class PendulumEnv:
         """
         Get the Hessian of the running cost from the given trajectory:
         x = [theta_0, w_0, u_0, ..., theta_N, w_N, u_N]^T
+
         Args:
             x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
         Returns:
@@ -136,6 +152,7 @@ class PendulumEnv:
         """
         Get the linearized constraints of the equality constraints from the given trajectory:
         x = [theta_0, w_0, u_0, ..., theta_N, w_N, u_N]^T
+
         Args:
             x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
         Returns:
@@ -165,6 +182,11 @@ class PendulumEnv:
     def get_grad_linearized_constraints(self, x):
         """
         Build up the matrices used to construct the equality constraint matrix
+
+        Args:
+            x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
+        Returns:
+            np.ndarray: Linearized constraints matrix G.
         """
         # Intialize the gradient matrix G
         G = np.zeros((self.num_eq_constraints*self.N, self.num_vars))
@@ -219,6 +241,15 @@ class PendulumEnv:
         p_sol = [p_k, p_lambda]^T
         which is both the solution to the KKT system
         and the Lagrange multipliers
+
+        Args:
+            x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
+        Returns:
+            np.ndarray: p_sol solution to the KKT system and the Lagrange multipliers.
+            np.ndarray: H Hessian of the running cost.
+            np.ndarray: grad_f Gradient of the running cost.
+            np.ndarray: grad_g Gradient of the linearized constraints.
+            np.ndarray: g Linearized constraints vector.
         """
         grad_f = self.grad_running_cost(x)
         H = self.hess_running_cost(x)
@@ -239,9 +270,14 @@ class PendulumEnv:
     
     def get_amnt_constr_violation(self, x):
         """
-        Compute the sum of the absolute values of the equality constraints
+        Compute the sum of the absolute values of just the equality constraints
 
         The goal is to drive this down to zero!
+
+        Args:
+            x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
+        Returns:
+            np.ndarray: Sum of the absolute values of the equality constraints.
         """
         theta = x[0::3] # extract every third element from x starting from index 0
         w     = x[1::3]
@@ -267,6 +303,11 @@ class PendulumEnv:
     def solve_unconstrained_SQP(self):
         """
         Main Loop for SQP without Inequality Constraints
+
+        Args:
+            N/A
+        Returns:
+            np.ndarray: Optimal trajectory x_guess
         """
 
         # Initialize params
@@ -410,6 +451,12 @@ class PendulumEnv:
     def create_ineq_constraints(self, x):
         """
         Creating inequality bounds on the control u_min <= u_n <= u_max
+
+        Args:
+            x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
+        Returns:
+            np.ndarray: matrix H for the inequality constraints.
+            np.ndarray: vector h for the inequality constraints.
         """
 
         # NOTE: First construct H (which is constant, hence why we make it once out here to save time)
@@ -448,6 +495,11 @@ class PendulumEnv:
         Compute the sum of the absolute values of the equality constraints
 
         But now with inequality constraints as well.
+
+        Args:
+            x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
+        Returns:
+            np.ndarray: Total constraint violation, including both equality and inequality constraints.
         """
         theta = x[0::3] # extract every third element from x starting from index 0
         w     = x[1::3]
@@ -638,6 +690,22 @@ class PendulumEnv:
 
         return x_guess
 
+    def reset_batch(self, batch_size):
+        """
+   		Reset the environment to a random initial state for a batch of size `batch_size`.
+
+        Args:
+            batch_size (int): Number of init states to reset
+        Returns:
+            np.ndarray: Each row is the state appended by the timestep? TODO: double check this
+        """
+        times = np.random.uniform(self.conf.x_init_min[-1], self.conf.x_init_max[-1], batch_size)
+        states = np.random.uniform(
+            self.conf.x_init_min[:-1], self.conf.x_init_max[:-1],
+            size=(batch_size, len(self.conf.x_init_max[:-1]))
+        )
+        times_int = np.expand_dims(self.conf.dt * np.round(times / self.conf.dt), axis=1)
+        return np.hstack((states, times_int))
 
 if __name__ == "__main__":
     """
@@ -650,7 +718,7 @@ if __name__ == "__main__":
     
     # Create pendulum environment and solve SQP system
     print("Creating PendulumEnv and solving SQP system...")
-    pend_env = PendulumEnv(None)  # conf parameter not used in this implementation
+    pend_env = PendulumEnv(None)  # conf parameter not used in this implementation yet
     pend_env.solve_constrained_SQP()
     
     # Show all plots
