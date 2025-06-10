@@ -21,7 +21,7 @@ class TrajOpt:
             pyt.XU[i * (self.conf.nx + self.conf.na) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.na)] = init_TO_controls[i]
 
         eepos_g = np.zeros(3 * pyt.N)
-        eepos_g[-3:] = self.env.TARGET_STATE
+        eepos_g[-3:] = self.conf.goal_ee
         xs = init_TO_states[0,:-1]
         pyt.setxs(xs)
 

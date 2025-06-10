@@ -102,7 +102,8 @@ class RLTrainer:
         # rollout and get per-step rewards
         for t in range(n):
             u = actions[t if t < n - 1 else t - 1]
-            states[t + 1], rewards[t] = self.env.step(states[t], u)
+            states[t + 1] = self.env.simulate(states[t], u)
+            rewards[t] = self.env.reward(states[t], u)
         rewards[-1] = self.env.reward(states[-1])
 
         # compute partial reward-to-go
