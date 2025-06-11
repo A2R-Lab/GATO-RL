@@ -610,7 +610,7 @@ class PendulumEnv(BaseEnv):
 
     def derivative_batch(self, state, action):
         """
-        Batch version of derivative()
+        Batch version of derivative().
 
         References:
             neural_network.compute_actor_grad()
@@ -621,11 +621,6 @@ class PendulumEnv(BaseEnv):
 
         Returns:
             torch.Tensor: Batch of derivative matrices (batch_size, 3, 1)
-        """
-        def derivative_batch(self, state, action):
-        """
-        Vectorized version of derivative across batch.
-        Returns tensor of shape (batch_size, 3, 1)
         """
         batch_size = state.shape[0]
         dt = self.conf.dt
