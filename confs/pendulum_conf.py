@@ -630,42 +630,38 @@ class PendulumEnv(BaseEnv):
 
     def reward(self, state, action=None):
         """
-        Computes reward from state and action, with quadratic cost:
-            cost = θ² + 0.1 * θ̇² + 0.001 * u²
-
-        References:
-            compute_partial_rtg()
+        Computes reward from state and action, penalizing deviation from goal:
+            cost = 10 * (θ - θ*)² + 0.1 * (θ̇ - θ̇*)² + 0.1 * u²
 
         Args:
             state (np.ndarray): Current state
             action (np.ndarray, optional): Control input
 
         Returns:
-            float: Reward value.
+            float: Reward value
         """
-        theta, theta_dot = state[:2]
-        cost = theta**2 + 0.1 * theta_dot**2
+        goal_theta, goal_theta_dot = self.goal_state[:2]
+        
+        cost = 10.0 * (state[0] - goal_theta)**2 + 0.1 * (state[1] - goal_theta_dot)**2
         if action is not None:
-            cost += 0.001 * action[0]**2
-        return -cost     
+            cost += 0.1 * action[0]**2
+        return -cost
 
     def reward_batch(self, state_batch, action_batch=None):
         """
-        Computes batch of rewards using tensors.
-
-        References:
-            neural_network.compute_actor_grad()
+        Computes batch of rewards using tensors, penalizing deviation from goal.
 
         Args:
-            state_batch (torch.Tensor): Batch of states (batch_size, 3)
-            action_batch (torch.Tensor, optional): Batch of actions (batch_size, 1)
+            state_batch (torch.Tensor): (batch_size, 3)
+            action_batch (torch.Tensor, optional): (batch_size, 1)
 
         Returns:
-            torch.Tensor: Batch of reward values (batch_size,)
+            torch.Tensor: (batch_size, 1) reward values
         """
-        theta = state_batch[:, 0]
-        theta_dot = state_batch[:, 1]
-        cost = theta**2 + 0.1 * theta_dot**2
+        theta, theta_dot = state_batch[:, 0], state_batch[:, 1]
+        goal_theta, goal_theta_dot = self.goal_state[0], self.goal_state[1]
+        
+        cost = 10.0 * (theta - goal_theta)**2 + 0.1 * (theta_dot - goal_theta_dot)**2
         if action_batch is not None:
-            cost += 0.001 * action_batch[:, 0]**2
+            cost += 0.1 * action_batch[:, 0]**2
         return -cost.unsqueeze(1)
