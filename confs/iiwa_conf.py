@@ -124,6 +124,7 @@ class Env(BaseEnv):
         return torch.stack(ee_positions, dim=0)
 
     def reward(self, state, action=None):
+        # NOTE: QD is velocity cost, we (maybe) should change the notation to dQ for readability.
         QD_cost, R_cost = 0.0001, 0.0001
         total_cost = -0.5 * QD_cost * np.sum(state[self.nx // 2:] ** 2)
         total_cost += -0.5 * np.sum((self.ee(state) - self.goal_ee) ** 2)
@@ -134,7 +135,7 @@ class Env(BaseEnv):
     def reward_batch(self, state_batch, action_batch=None):
         QD_cost, R_cost = 0.0001, 0.0001
         total_cost = -0.5 * QD_cost * torch.sum(state_batch[:, self.nx // 2:] ** 2, dim=1)
-        ee_pos = self.ee_batch(state_batch)
+        ee_pos = self.ee_batch(state_batch) # find the end-effector position for each state in the batch
         target = torch.tensor(self.goal_ee, dtype=ee_pos.dtype, device=ee_pos.device)
         total_cost += -0.5 * torch.sum((ee_pos - target) ** 2, dim=1)
         if action_batch is not None:
