@@ -36,17 +36,17 @@ N = 300 # Number of time steps, i.e. max episode length
 
 # Min & max values for initial state vector + timestep
 x_init_min = np.array([[0.0],  # Initial angle (theta)
-                       [0.0],  # Initial angular velocity (w)
-                       [0.0]]) # Initial timestep
+                    [0.0],  # Initial angular velocity (w)
+                    [0.0]]) # Initial timestep
 
 # Final state vector + timestep
 x_init_max = np.array([[np.pi], # Final angle (theta)
-                       [0.0],   # Final angular velocity (w)
-                       [N*dt]]) # Final timestep
+                    [0.0],   # Final angular velocity (w)
+                    [N*dt]]) # Final timestep
 
 # Desired goal state for the pendulum
 goal_state = np.array([[np.pi],  # Desired angle (theta)
-                       [0.0]])   # Desired angular velocity (w)
+                    [0.0]])   # Desired angular velocity (w)
 
 # Dimension of the state vector
 x_dim = 2  # [theta (angle), w (angular velocity)]
@@ -75,6 +75,7 @@ class PendulumEnv(BaseEnv):
         super().__init__(conf)
         self.conf = conf
         self.dt = dt # Time step for the simulation
+        self.g = grav
         self.N = N_ts # Number of time steps
         self.nq = 1 # Number of joints (1 for pendulum)
         self.nx = x_dim # Number of state variables (1 joint position + 1 joint velocity)
@@ -390,14 +391,174 @@ class PendulumEnv(BaseEnv):
 
         return constr_violation
 
+    def solve_constrained_SQP(self):    
+        """
+        Main Loop for SQP with Inequality Constraints
+        """
+
+        # Initialize params
+        max_iter = int(100) # Max number of iterations of SQP (NOT timestep of the problem)
+        stop_tol = 1e-5
+        curr_iter = 0
+
+        # Track constraint violation, running cost, and alpha per iteration of the solver
+        constr_viol_list  = np.empty((max_iter, 1))
+        running_cost_list = np.empty((max_iter, 1))
+        alpha_list        = np.empty((max_iter, 1))
+
+        # Initial random guesses
+        # NOTE: make sure the x_guess initial conditions should be theta=0, w=0
+        x_guess = np.zeros(((x_dim + u_dim)*self.N, 1))
+        lambda_guess = np.zeros(((x_dim)*self.N, 1))
+        mu_guess = np.zeros(((x_dim)*self.N, 1))
+        KKT = 1
+
+        # Filter Linear Search!
+        # NOTE: The f_best and c_best should be computed from your initial guess
+        #       not infinity (otherwise it might blow up on the first step)
+        f_best = np.inf #np.linalg.norm(running_cost(x_guess))
+        c_best = np.inf #abs(get_amnt_constr_violation(x_guess))
+        alpha = 1 # initial step size
+        rho = 0.5 # Shrink factor for alpha (step size)
+        accept_step = False # flag for accepting step or not
+
+        grad_f = self.grad_running_cost(x_guess)
+        Hess = self.hess_running_cost(x_guess)
+        g = self.get_linearized_constraints(x_guess)
+        grad_g = self.get_grad_linearized_constraints(x_guess)
+
+        while (c_best > stop_tol or             # Terminate if constraint violations is zero
+            np.linalg.norm(KKT) < stop_tol): # Terminate if nabla_p L is zero
+            if curr_iter >= max_iter:
+                break
+            
+            grad_f = self.grad_running_cost(x_guess)
+            Hess = self.hess_running_cost(x_guess)
+            g = self.get_linearized_constraints(x_guess)
+            grad_g = self.get_grad_linearized_constraints(x_guess)
+            H, h = self.create_ineq_constraints(x_guess)
+
+            # NOTE: Now we're using cvxopt to solve to consider the inequality constraints!
+            problem = Problem(sparse.csr_matrix(Hess), grad_f, 
+                            sparse.csr_matrix(H), h, 
+                            grad_g, g)
+            p_sol = solve_problem(problem, solver="osqp")
+            x_guess_dir = p_sol.x
+            lambdas_guess_dir = p_sol.y # NOTE: equality constraints multipliers
+            mus_guess_dir = p_sol.z     # NOTE: inequality constraints multipliers
+
+            # reset alpha and flag for each iteration
+            alpha = 1
+            accept_step = False
+
+            while not accept_step:
+                if alpha < 1e-5:
+                    break
+                # NOTE: Your shape was wrong dummy, the x_guess + alpha*x_guess_dir turned into a matrix
+                #       hence why you need to squeeze() it
+                if self.running_cost(x_guess[:,0] + alpha * x_guess_dir) < f_best:
+                    f_best = self.running_cost(x_guess[:,0] + alpha * x_guess_dir)
+                    accept_step = True
+                if self.get_amnt_constr_violation_update_2(x_guess[:,0] + alpha * x_guess_dir) < c_best:
+                    c_best = abs(self.get_amnt_constr_violation_update_2(x_guess[:,0] + alpha * x_guess_dir))
+                    accept_step = True
+                else:
+                    alpha = alpha * rho
+
+            # Update guesses
+            x_guess = x_guess + alpha*x_guess_dir[:, np.newaxis]
+            lambda_guess = (1-alpha)*lambda_guess + alpha*lambdas_guess_dir
+            mu_guess = (1-alpha)*mu_guess + alpha*mus_guess_dir
+
+            # Record constraint violation, running cost, alpha per iteration
+            constr_viol_list[curr_iter]  = self.get_amnt_constr_violation_update_2(x_guess) #c_best
+            running_cost_list[curr_iter] = self.running_cost(x_guess) #f_best
+            alpha_list[curr_iter]        = alpha
+
+            KKT = grad_f.squeeze() + lambdas_guess_dir @ grad_g
+            print("Curr iter: ", curr_iter, " Cost: ", running_cost_list[curr_iter],
+                " Constraint Violation: ", constr_viol_list[curr_iter])
+            #      "KKT: ", np.linalg.norm(KKT))
+
+            # Move onto next iteration
+            curr_iter += 1
+
+        print("Total iterations: ", curr_iter)
+
+        # Extract values of the pendulum system
+        pend_thetas = x_guess[0:num_vars:(x_dim+u_dim)]
+        pend_ws     = x_guess[1:num_vars:(x_dim+u_dim)]
+        pend_us     = x_guess[2:num_vars:(x_dim+u_dim)]
+
+        plot_flag = True
+        if plot_flag:
+            # Trim arrays for plotting
+            constr_viol_list  = constr_viol_list[:curr_iter]
+            running_cost_list = running_cost_list[:curr_iter]
+            alpha_list        = alpha_list[:curr_iter]
+
+            plt.figure()
+            plt.plot(np.arange(curr_iter), constr_viol_list, label="Constraint Violations")
+            #plt.yscale("log")
+            plt.ylabel('Constrain Violation')
+            plt.xlabel('k iteration')
+            plt.grid()
+            plt.legend()
+
+            plt.figure()
+            plt.plot(np.arange(curr_iter), running_cost_list, label="Running Cost")
+            #plt.yscale("log")
+            plt.ylabel('Running Cost')
+            plt.xlabel('k iteration')
+            plt.grid()
+            plt.legend()
+
+            plt.figure()
+            plt.plot(np.arange(curr_iter), alpha_list, label="Alphas")
+            #plt.yscale("log")
+            plt.ylabel('Alphas')
+            plt.xlabel('k iteration')
+            plt.grid()
+            plt.legend()
+
+            # Plot theta (angle), w (angular velocity), and u (control)
+            plt.figure()
+            plt.plot(np.arange(self.N), pend_thetas, label="theta (angle)")
+            plt.ylabel('theta (angle)')
+            plt.xlabel('timestep')
+            plt.grid()
+            plt.legend()
+
+            plt.figure()
+            plt.plot(np.arange(self.N), pend_ws, label="w (angular velocity)")
+            plt.ylabel('w (angular velocity)')
+            plt.xlabel('timestep')
+            plt.grid()
+            plt.legend()
+
+            plt.figure()
+            plt.plot(np.arange(self.N), pend_us, label="u (control)")
+            plt.ylabel('u (control signal)')
+            plt.xlabel('timestep')
+            plt.grid()
+            plt.legend()
+
+        x_init = np.array([[.0],
+                        [.0]])
+        pendulum.animate_robot(x_init, pend_us.T)
+
+        return x_guess
+
     def reset_batch(self, batch_size):
         """
-   		Reset the environment to a random initial state for a batch of size `batch_size`.
+        Reset the environment to a random initial state for a batch of size `batch_size`.
 
         Args:
-            batch_size (int): Number of init states to reset
+            batch_size (int): Number of initial states to reset
+
         Returns:
-            np.ndarray: Each row is the state appended by the timestep? TODO: double check this
+            np.ndarray: Array of shape (batch_size, 3), where each row is the state
+                        appended by the timestep
         """
         times = np.random.uniform(self.conf.x_init_min[-1], self.conf.x_init_max[-1], batch_size)
         states = np.random.uniform(
@@ -406,3 +567,110 @@ class PendulumEnv(BaseEnv):
         )
         times_int = np.expand_dims(self.conf.dt * np.round(times / self.conf.dt), axis=1)
         return np.hstack((states, times_int))
+
+    def simulate(self, state, action):
+        """
+        Simulates one step forward using:
+            θ_{t+1} = θ_t + dt * θ̇_t
+            θ̇_{t+1} = θ̇_t + dt * (u_t - g * sin(θ_t))
+
+        Args:
+            state (np.ndarray): State with shape (3,) [θ_t, θ̇_t, t]
+            action (np.ndarray): Action with shape (1,) [u_t]
+        
+        Returns:
+            np.ndarray: Next state with shape (3,) [θ_{t+1}, θ̇_{t+1}, t+1]
+        """
+        theta_next = state[0] + self.dt * state[1]
+        theta_dot_next = state[1] + self.dt * (action[0] - self.g * np.sin(state[0]))
+        t_next = state[2] + self.dt
+        return np.array([theta_next, theta_dot_next, t_next])
+
+    def simulate_batch(self, state, action):
+        """
+        Batch version of simulate().
+
+        References:
+            neural_network.compute_actor_grad()
+
+        Args:
+            state (np.ndarray): Batch of states with shape (batch_size, 3)
+            action (np.ndarray): Batch of actions with shape (batch_size, 1)
+
+        Returns:
+            torch.Tensor: Batch of next states with shape (batch_size, 3)
+        """
+        theta, theta_dot, t = state[:, 0], state[:, 1], state[:, 2]
+        u = action[:, 0]
+
+        theta_next = theta + self.dt * theta_dot
+        theta_dot_next = theta_dot + self.dt * (u - self.g * torch.sin(theta))
+        t_next = t + self.dt
+        return torch.stack([theta_next, theta_dot_next, t_next], dim=1)
+
+    def derivative_batch(self, state, action):
+        """
+        Batch version of derivative()
+
+        References:
+            neural_network.compute_actor_grad()
+
+        Args:
+            state (np.ndarray): Batch of states (batch_size, 3)
+            action (np.ndarray): Batch of actions (batch_size, 1)
+
+        Returns:
+            torch.Tensor: Batch of derivative matrices (batch_size, 3, 1)
+        """
+        def derivative_batch(self, state, action):
+        """
+        Vectorized version of derivative across batch.
+        Returns tensor of shape (batch_size, 3, 1)
+        """
+        batch_size = state.shape[0]
+        dt = self.conf.dt
+        jac = np.zeros((batch_size, 3, 1))
+        jac[:, 1, 0] = dt
+        return torch.tensor(jac, dtype=torch.float32)
+
+    def reward(self, state, action=None):
+        """
+        Computes reward from state and action, with quadratic cost:
+            cost = θ² + 0.1 * θ̇² + 0.001 * u²
+
+        References:
+            compute_partial_rtg()
+
+        Args:
+            state (np.ndarray): Current state
+            action (np.ndarray, optional): Control input
+
+        Returns:
+            float: Reward value.
+        """
+        theta, theta_dot = state[:2]
+        cost = theta**2 + 0.1 * theta_dot**2
+        if action is not None:
+            cost += 0.001 * action[0]**2
+        return -cost     
+
+    def reward_batch(self, state_batch, action_batch=None):
+        """
+        Computes batch of rewards using tensors.
+
+        References:
+            neural_network.compute_actor_grad()
+
+        Args:
+            state_batch (torch.Tensor): Batch of states (batch_size, 3)
+            action_batch (torch.Tensor, optional): Batch of actions (batch_size, 1)
+
+        Returns:
+            torch.Tensor: Batch of reward values (batch_size,)
+        """
+        theta = state_batch[:, 0]
+        theta_dot = state_batch[:, 1]
+        cost = theta**2 + 0.1 * theta_dot**2
+        if action_batch is not None:
+            cost += 0.001 * action_batch[:, 0]**2
+        return -cost.unsqueeze(1)
