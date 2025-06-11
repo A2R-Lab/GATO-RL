@@ -1,9 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pendulum
-from scipy import sparse
 from base_env import BaseEnv
-from qpsolvers import solve_qp, Problem, solve_problem
 
 """
 Trajectory optimization class for a simple pendulum system.
@@ -55,6 +53,10 @@ x_dim = 2  # [theta (angle), w (angular velocity)]
 # Dimension of the control
 u_dim = 1  # [torque]
 
+nx = x_dim # Number of state variables 
+nq = 1  # Number of joints (1 for pendulum)
+nu = u_dim  # Number of actuators (1 for pendulum torque)
+
 # Total number of variables
 num_vars = N * (x_dim + u_dim)  # Total number of variables in trajectory
 
@@ -66,18 +68,22 @@ grav = pendulum.g
 
 #-----Pendulum Env & SQP Solver--------------------------------------------------------------------
 class PendulumEnv(BaseEnv):
-    def __init__(self, conf):
+    def __init__(self, conf, N_ts, u_min=10, u_max=10):
+        # NOTE: Passing the number of timsteps N from the environment initialization for flexibility
+        # we might want to change it later depending on how the environment is initialized and called
+        # in batches
+        super().__init__(conf)
         self.conf = conf
         self.dt = dt # Time step for the simulation
-        self.N = N # Number of time steps
+        self.N = N_ts # Number of time steps
         self.nq = 1 # Number of joints (1 for pendulum)
         self.nx = x_dim # Number of state variables (1 joint position + 1 joint velocity)
         self.nu = u_dim # Number of actuators (1 for pendulum torque)
         self.goal_state = goal_state  # Target state (pendulum upright position)
         self.num_vars = self.N * (self.nx + self.nu) # Total number of variables in trajectory
         self.num_eq_constraints = num_eq_constraints  # Number of equality constraints
-        self.u_min = 10
-        self.u_max = 10
+        self.u_min = u_min
+        self.u_max = u_max
 
     def running_cost(self, x):
         """

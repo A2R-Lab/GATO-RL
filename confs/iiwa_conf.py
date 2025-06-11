@@ -45,16 +45,16 @@ x_init_max = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,
 state_norm_arr = np.array([10,10,10,10,10,10,10,10,10,10,10,10,10,10, int(NSTEPS*dt)])
 goal_ee = [0.5, 0.5, 0.5]
 state_dim = 15
-nx = 14
-nq = 7
-na = 7
+nx = 14 # Number of state variables (7 joint positions + 7 joint velocities)
+nq = 7  # Number of joint positions (KUKA IIWA has 7 joints)
+na = 7  # Number of actions (controls (torques for each joint)), other conventions use nu
 URDF_PATH = os.path.abspath(os.path.join('confs', 'iiwa.urdf'))
 robot = RobotWrapper.BuildFromURDF(URDF_PATH, package_dirs=[os.path.dirname(URDF_PATH)])
 robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
 
 #-----env functions--------------------------------------------------------------------------------
-class Env(BaseEnv):
+class IiwaEnv(BaseEnv):
     def __init__(self, conf):
         super().__init__(conf)
         self.nx = conf.nx
