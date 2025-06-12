@@ -32,29 +32,23 @@ pendulum.animate_robot(x_init, controls.T)
 # TODO: fill out NN parameters for pendulum case
 
 #-----TO params------------------------------------------------------------------------------------
-dt = pendulum.dt # dt=0.01
-N = 300 # Number of time steps, i.e. max episode length
+dt = pendulum.dt                                                                                    # dt=0.01
+N = 300                                                                                             # Number of time steps, i.e. max episode length
 x_init_min = np.array([0.0, 0.0, 0.0])                                                              # Initial angle (θ),  angular velocity (w), timestep (t)
 x_init_max = np.array([np.pi, 0.0, N * dt])                                                         # Final angle (θ),  angular velocity (w), timestep (t)
 goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
 
-# Dimension of the state vector
-x_dim = 2  # [theta (angle), w (angular velocity)]
-# Dimension of the control
-u_dim = 1  # [torque]
+x_dim = 2                                                                                           # Dimension of the state vector [theta (angle), w (angular velocity)]
+u_dim = 1                                                                                           # Dimension of the control [torque]
 
-nx = x_dim # Number of state variables 
-nq = 1  # Number of joints (1 for pendulum)
-nu = u_dim  # Number of actuators (1 for pendulum torque)
+nx = x_dim                                                                                          # Number of state variables 
+nq = 1                                                                                              # Number of joints (1 for pendulum)
+nu = u_dim                                                                                          # Number of actuators (1 for pendulum torque)
 
-# Total number of variables
-num_vars = N * (x_dim + u_dim)  # Total number of variables in trajectory
+num_vars = N * (x_dim + u_dim)                                                                      # Total number of variables in trajectory
+num_eq_constraints = 2                                                                              # Number of equality constraints
 
-# Number of equality constraints
-num_eq_constraints = 2 # 
-
-# Gravity constant
-grav = pendulum.g
+grav = pendulum.g                                                                                   # Gravity constant
 
 #-----Pendulum Env & SQP Solver--------------------------------------------------------------------
 class PendulumEnv(BaseEnv):
@@ -600,7 +594,8 @@ class PendulumEnv(BaseEnv):
 
     def derivative_batch(self, state, action):
         """
-        Batch version of derivative().
+        Batch version of derivative(). Since only the angular velocity (ω) is affected by the control,
+        the Jacobian dnext_state/daction has only one nonzero entry, ∂ω/∂u = dt.
 
         References:
             neural_network.compute_actor_grad()
