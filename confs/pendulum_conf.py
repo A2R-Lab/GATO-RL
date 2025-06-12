@@ -1,7 +1,11 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from . import pendulum
+import os
+import sys
+
+from confs import pendulum
+
 from confs.base_env import BaseEnv
 
 """

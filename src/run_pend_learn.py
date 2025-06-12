@@ -7,12 +7,15 @@ from replay_buffer import ReplayBuffer
 from rl_trainer import RLTrainer
 from opt.traj_opt import TrajOpt
 
+# NOTE: Currently broken from refactoring, will come fix this after getting the 
+# pendulum case to work (and we can actually visualize and verify the pendulum case)!
+
 # -----Sample computation function-----------------------------------------------------------------
 def compute_sample(args):
     ep, init_state, env = args
     init_state, init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
     if not success: return None
-    TO_states, TO_controls = trajopt.TO_Solve(init_state, init_states, init_controls)
+    TO_states, TO_controls = trajopt.solve_pend_unconstrained_SQP(init_state, init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(
                                                             TO_controls, TO_states)
     return RL_states.tolist(), partial_rtg, next_states, done, sum(rewards)
@@ -23,10 +26,10 @@ if __name__ == '__main__':
     # set up conf
     PATH_TO_CONF = os.path.join(os.getcwd(), 'confs')
     sys.path.append(PATH_TO_CONF)
-    conf = importlib.import_module('iiwa_conf')
+    conf = importlib.import_module('pendulum_conf')
 
     # initialze env, nn, buffer, TO, and rl
-    env = getattr(conf, 'Env')(conf)
+    env = getattr(conf, 'PendulumEnv')(conf, N_ts=300, u_min=5, u_max=5)
     nn = ActorCriticNet(env, conf)
     buffer = ReplayBuffer(conf)
     trajopt = TrajOpt(env, conf)
@@ -66,4 +69,3 @@ if __name__ == '__main__':
     trainer.RL_save_weights()
 
     
-
