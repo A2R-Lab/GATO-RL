@@ -58,10 +58,9 @@ if __name__ == '__main__':
         num_success = len(valid_samples)
         update_step_counter = trainer.learn_and_update(update_step_counter, buffer, ep)
         ep_reward_arr[ep_arr_idx : ep_arr_idx + num_success] = rewards
+        for i in range(num_success):
+            print("Episode  {}  --->   Return = {}".format(ep_arr_idx + i, rewards[i]))
         ep_arr_idx += num_success
-
-        for i in range(len(valid_samples)):
-            print("Episode  {}  --->   Return = {}".format(ep*len(valid_samples) + i, rewards[i]))
 
         if update_step_counter > conf.NN_LOOPS_TOTAL:
             break
