@@ -2,7 +2,6 @@ import numpy as np
 import os
 import sys
 import matplotlib.pyplot as plt
-import casadi as ca
 from .pinocchio_template import thneed
 from scipy import sparse
 from qpsolvers import solve_qp, Problem, solve_problem
