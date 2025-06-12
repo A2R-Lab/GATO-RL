@@ -38,19 +38,19 @@ if __name__ == '__main__':
 
     # initialize episode reward arrays
     ep_arr_idx = 0
-    ep_reward_arr = np.zeros(conf.NEPISODES-ep_arr_idx)*np.nan
+    ep_reward_arr = np.zeros(int(conf.TO_EPISODES*len(conf.NN_LOOPS))-ep_arr_idx)*np.nan
     update_step_counter = 0
 
     # -----Episode loop----------------------------------------------------------------------------
-    for ep in range(conf.NLOOPS):
+    for ep in range(len(conf.NN_LOOPS)):
         # collect samples
         print("Collecting samples...")
-        init_rand_state = env.reset_batch(conf.EP_UPDATE)
-        samples = [compute_sample((ep, init_rand_state[i, :], env)) for i in range(conf.EP_UPDATE)]
+        init_rand_state = env.reset_batch(conf.TO_EPISODES)
+        samples = [compute_sample((ep, init_rand_state[i, :], env)) for i in range(conf.TO_EPISODES)]
         valid_samples = [sample for sample in samples if sample]
         
         # add samples to replay buffer
-        print(f"Compute_sample {len(valid_samples)}/{conf.EP_UPDATE} success")
+        print(f"Compute_sample {len(valid_samples)}/{conf.TO_EPISODES} success")
         states, partial_rewards, state_nexts, dones, rewards = zip(*valid_samples)
         buffer.add(states, partial_rewards, state_nexts, dones)
 
@@ -63,7 +63,7 @@ if __name__ == '__main__':
         for i in range(len(valid_samples)):
             print("Episode  {}  --->   Return = {}".format(ep*len(valid_samples) + i, rewards[i]))
 
-        if update_step_counter > conf.NUPDATES:
+        if update_step_counter > conf.NN_LOOPS_TOTAL:
             break
     
     trainer.RL_save_weights()

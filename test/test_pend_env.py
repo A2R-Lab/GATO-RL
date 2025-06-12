@@ -21,8 +21,8 @@ def test_reset_batch_shape(env):
 def test_reset_batch_bounds(env):
 	batch_size = 5
 	states = env.reset_batch(batch_size)
-	x_min = env.conf.x_init_min
-	x_max = env.conf.x_init_max
+	x_min = env.conf.X_INIT_MIN
+	x_max = env.conf.X_INIT_MAX
 	assert np.all(states >= x_min)
 	assert np.all(states <= x_max)
 

@@ -11,10 +11,11 @@ class ActorCriticNet:
         self.conf = conf
         self.MSE = nn.MSELoss()
         self.batch_size = conf.BATCH_SIZE
+        self.state_dim = conf.nx + 1
 
     def create_actor(self):
         model = nn.Sequential(
-            nn.Linear(self.conf.state_dim, self.conf.NH1),
+            nn.Linear(self.state_dim, self.conf.NH1),
             nn.LeakyReLU(negative_slope=0.3),
             nn.Linear(self.conf.NH1, self.conf.NH2),
             nn.LeakyReLU(negative_slope=0.3),
@@ -29,7 +30,7 @@ class ActorCriticNet:
 
     def create_critic_sine(self):
         model = nn.Sequential(
-            Siren(self.conf.state_dim, 64),
+            Siren(self.state_dim, 64),
             Siren(64, 64),
             Siren(64, 128),
             Siren(128, 128),
@@ -45,7 +46,7 @@ class ActorCriticNet:
             input = torch.tensor(np.array(input), dtype=torch.float32)
 
         if self.conf.NORMALIZE_INPUTS:
-            norm_arr = torch.tensor(self.conf.state_norm_arr, dtype=torch.float32)
+            norm_arr = torch.tensor(self.conf.NORM_ARR, dtype=torch.float32)
             input = normalize_tensor(input, norm_arr)
 
         return NN(input)
@@ -83,7 +84,7 @@ class ActorCriticNet:
             inputs=next_states,
             grad_outputs=torch.ones_like(V_next),
             create_graph=True
-        )[0].view(self.batch_size, 1, self.conf.state_dim)
+        )[0].view(self.batch_size, 1, self.state_dim)
 
         # dR/da
         rewards = self.env.reward_batch(states, actions)

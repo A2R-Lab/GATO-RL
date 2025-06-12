@@ -38,8 +38,8 @@ pendulum.animate_robot(x_init, controls.T)
 #-----TO params------------------------------------------------------------------------------------
 dt = pendulum.dt                                                                                    # dt=0.01
 N = 300                                                                                             # Number of time steps, i.e. max episode length
-x_init_min = np.array([0.0, 0.0, 0.0])                                                              # Initial angle (θ),  angular velocity (w), timestep (t)
-x_init_max = np.array([np.pi, 0.0, N * dt])                                                         # Final angle (θ),  angular velocity (w), timestep (t)
+X_INIT_MIN = np.array([0.0, 0.0, 0.0])                                                              # Initial angle (θ),  angular velocity (w), timestep (t)
+X_INIT_MAX = np.array([np.pi, 0.0, N * dt])                                                         # Final angle (θ),  angular velocity (w), timestep (t)
 goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
 
 x_dim = 2                                                                                           # Dimension of the state vector [theta (angle), w (angular velocity)]
@@ -548,10 +548,10 @@ class PendulumEnv(BaseEnv):
             np.ndarray: Array of shape (batch_size, 3), where each row is the state
                         appended by the timestep
         """
-        times = np.random.uniform(self.conf.x_init_min[-1], self.conf.x_init_max[-1], batch_size)
+        times = np.random.uniform(self.conf.X_INIT_MIN[-1], self.conf.X_INIT_MAX[-1], batch_size)
         states = np.random.uniform(
-            self.conf.x_init_min[:-1], self.conf.x_init_max[:-1],
-            size=(batch_size, len(self.conf.x_init_max[:-1]))
+            self.conf.X_INIT_MIN[:-1], self.conf.X_INIT_MAX[:-1],
+            size=(batch_size, len(self.conf.X_INIT_MAX[:-1]))
         )
         times_int = np.expand_dims(self.conf.dt * np.round(times / self.conf.dt), axis=1)
         return np.hstack((states, times_int))

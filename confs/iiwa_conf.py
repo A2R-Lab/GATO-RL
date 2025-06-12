@@ -5,27 +5,15 @@ import os
 import pinocchio as pin
 from base_env import BaseEnv
 
-#-----CACTO params---------------------------------------------------------------------------------
-EP_UPDATE = 10                                                                                     # Number of episodes before updating critic and actor
-NUPDATES = 100000                                                                                  # Max NNs updates
-UPDATE_LOOPS = np.arange(1000, 48000, 3000)                                                        # Number of updates of both critic and actor performed every EP_UPDATE episodes                                                                                
-NEPISODES = int(EP_UPDATE*len(UPDATE_LOOPS))                                                       # Max training episodes
-NLOOPS = len(UPDATE_LOOPS)                                                                         # Number of algorithm loops
-NSTEPS = 50                                                                                        # Max episode length
-CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
-ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
-REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
-BATCH_SIZE = 128
-MC = 0                                                                                             # Flag to use MC or TD(n)
-UPDATE_RATE = 0.001                                                                                # Homotopy rate to update the target critic network if TD(n) is used
-nsteps_TD_N = int(NSTEPS/4)  
-
 #----- NN params-----------------------------------------------------------------------------------
-critic_type = 'sine'                                                                               # Activation function - critic (either relu, elu, sine, sine-elu)
+NN_LOOPS = np.arange(1000, 48000, 3000)                                                            # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
+NN_LOOPS_TOTAL = 100000                                                                            # Max NNs updates total
+BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
 NH1 = 256                                                                                          # 1st hidden layer size - actor
 NH2 = 256                                                                                          # 2nd hidden layer size - actor
-NNs_path = 'iiwa'
-NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
+NN_PATH = 'iiwa'                                                                                   # Path to save the .pth files for actor and critic
+CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
+ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
 kreg_l1_A = 1e-2                                                                                   # Weight of L1 regularization in actor's network - kernel
 kreg_l2_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - kernel
 breg_l1_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - bias
@@ -36,22 +24,31 @@ breg_l1_C = 1e-2                                                                
 breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
 
 #-----TO params------------------------------------------------------------------------------------
-dt = 0.01
-# Minimum and maximum values for the initial state vector + time
-x_init_min = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,
+TO_EPISODES = 10                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
+dt = 0.01                                                                                          # timestep
+NSTEPS = 50                                                                                        # Max trajectory length
+X_INIT_MIN = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,                           # minimum initial state vector + time
                     1.57,1.57,1.57,1.57,1.57,1.57,1.57,0])
-x_init_max = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,
+X_INIT_MAX = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,                                  # maximum initial state vector + time
                     1.57,1.57,1.57,1.57,1.57,1.57,1.57,(NSTEPS-1)*dt])
-state_norm_arr = np.array([10,10,10,10,10,10,10,10,10,10,10,10,10,10, int(NSTEPS*dt)])
-goal_ee = [0.5, 0.5, 0.5]
-state_dim = 15
-nx = 14 # Number of state variables (7 joint positions + 7 joint velocities)
-nq = 7  # Number of joint positions (KUKA IIWA has 7 joints)
-na = 7  # Number of actions (controls (torques for each joint)), other conventions use nu
+nx = 14                                                                                            # Number of state variables (7 joint positions + 7 joint velocities)
+nq = 7                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
+na = 7                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
+
+#-----Misc params----------------------------------------------------------------------------------
+REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
+MC = 0                                                                                             # Flag to use MC or TD(n)
+UPDATE_RATE = 0.001                                                                                # Homotopy rate to update the target critic network if TD(n) is used
+NSTEPS_TD_N = int(NSTEPS/4)  
+NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
+NORM_ARR = np.array([10,10,10,10,10,10,10,10,10,10,10,10,10,10, int(NSTEPS*dt)])                   # Array of values to normalize by
+
+#-----IIWA-specific params-------------------------------------------------------------------------
 URDF_PATH = os.path.abspath(os.path.join('confs', 'iiwa.urdf'))
 robot = RobotWrapper.BuildFromURDF(URDF_PATH, package_dirs=[os.path.dirname(URDF_PATH)])
 robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
+goal_ee = [0.5, 0.5, 0.5]
 
 #-----env functions--------------------------------------------------------------------------------
 class IiwaEnv(BaseEnv):
@@ -65,10 +62,10 @@ class IiwaEnv(BaseEnv):
     def reset_batch(self, batch_size):
         # NOTE: since the state vector has the time as the last element,
         # we generate random times and states separately, then concatenate them.
-        times = np.random.uniform(self.conf.x_init_min[-1], self.conf.x_init_max[-1], batch_size)
+        times = np.random.uniform(self.conf.X_INIT_MIN[-1], self.conf.X_INIT_MAX[-1], batch_size)
         states = np.random.uniform(
-            self.conf.x_init_min[:-1], self.conf.x_init_max[:-1],
-            size=(batch_size, len(self.conf.x_init_max[:-1]))
+            self.conf.X_INIT_MIN[:-1], self.conf.X_INIT_MAX[:-1],
+            size=(batch_size, len(self.conf.X_INIT_MAX[:-1]))
         )
         times_int = np.expand_dims(self.conf.dt * np.round(times / self.conf.dt), axis=1)
         return np.hstack((states, times_int))
@@ -97,7 +94,7 @@ class IiwaEnv(BaseEnv):
         Fu[self.na:-1, :] = self.conf.robot.data.Minv
         Fu[:self.nx, :] *= self.conf.dt
         if self.conf.NORMALIZE_INPUTS:
-            Fu[:-1] *= (1 / self.conf.state_norm_arr[:-1, None])
+            Fu[:-1] *= (1 / self.conf.NORM_ARR[:-1, None])
         return Fu
 
     def simulate_batch(self, state, action):

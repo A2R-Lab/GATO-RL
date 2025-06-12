@@ -10,12 +10,12 @@ class RLTrainer:
         self.NN = NN
         self.conf = conf
         self.N_try = N_try
+        self.state_dim = conf.nx + 1
         self.actor_model = None
         self.critic_model = None
         self.target_critic = None
         self.actor_optimizer = None
         self.critic_optimizer = None
-        self.NSTEPS_SH = 0
         return
     
     def setup_model(self, recover_training=None):
@@ -69,7 +69,7 @@ class RLTrainer:
     def learn_and_update(self, step_counter, buffer, ep):
         t_sample, t_update, t_target = [], [], []
 
-        for _ in range(int(self.conf.UPDATE_LOOPS[ep])):
+        for _ in range(int(self.conf.NN_LOOPS[ep])):
             # sample from buffer
             t0 = time.time()
             s, prtg, s_next, d, w = buffer.sample()
@@ -96,7 +96,7 @@ class RLTrainer:
     def compute_partial_rtg(self, actions, states):
         n = self.conf.NSTEPS - int(states[0, -1] / self.conf.dt)
         rewards = np.empty(n + 1)
-        next_states = np.zeros((n + 1, self.conf.state_dim))
+        next_states = np.zeros((n + 1, self.state_dim))
         dones = np.zeros(n + 1)
 
         # rollout and get per-step rewards
@@ -107,18 +107,18 @@ class RLTrainer:
         rewards[-1] = self.env.reward(states[-1])
 
         # compute partial reward-to-go
-        rtg = np.array([rewards[i:min(i + self.conf.nsteps_TD_N, n)].sum()
+        rtg = np.array([rewards[i:min(i + self.conf.NSTEPS_TD_N, n)].sum()
                         for i in range(n + 1)])
         for i in range(n + 1):
-            done = self.conf.MC or i + self.conf.nsteps_TD_N >= n
+            done = self.conf.MC or i + self.conf.NSTEPS_TD_N >= n
             dones[i] = int(done)
             if not done:
-                next_states[i] = states[i + self.conf.nsteps_TD_N]
+                next_states[i] = states[i + self.conf.NSTEPS_TD_N]
 
         return states, rtg, next_states, dones, rewards
     
     def RL_save_weights(self, step='final'):
-            path = f"{self.conf.NNs_path}/N_try_{self.N_try}"
+            path = f"{self.conf.NN_PATH}/N_try_{self.N_try}"
             torch.save(self.actor_model.state_dict(), f"{path}/actor_{step}.pth")
             torch.save(self.critic_model.state_dict(), f"{path}/critic_{step}.pth")
             torch.save(self.target_critic.state_dict(), f"{path}/target_critic_{step}.pth")
@@ -129,7 +129,7 @@ class RLTrainer:
             return None, None, None, 0
 
         actions = np.zeros((n, self.conf.na))
-        states = np.zeros((n + 1, self.conf.state_dim))
+        states = np.zeros((n + 1, self.state_dim))
         states[0] = init_state
 
         for i in range(n):

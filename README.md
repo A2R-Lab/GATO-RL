@@ -1,7 +1,7 @@
 # GATO-RL
 Adaptation/simplification of [cacto](https://github.com/gianluigigrandesso/cacto) in PyTorch and alt. trajectory optimizer software. 
 
-To understand the codebase, we recommend starting at ```src/main.py```. The diagram below helps explain the framework. First, we collect experiences using the TO solver. We solve ```EP_UPDATE``` number of TO problems, which have random initialization and warm-started using the actor policy. We compute the partial reward-to-go associated with each state of each TO problem, which we call "transitions", which are tuples $(s_t, a_t, r_t, s_{t+n}, d_t)$:
+To understand the codebase, we recommend starting at ```src/main.py```. The diagram below helps explain the framework. First, we collect experiences using the TO solver. We solve ```TO_EPISODES``` number of TO problems, which have random initialization and warm-started using the actor policy. We compute the partial reward-to-go associated with each state of each TO problem, which we call "transitions", which are tuples $(s_t, a_t, r_t, s_{t+n}, d_t)$:
 
 - $s_t$: state at time $t$
 - $a_t$: action at time $t$
@@ -11,7 +11,7 @@ To understand the codebase, we recommend starting at ```src/main.py```. The diag
 - $s_{t+n}$: state at time $t+n$
 - $d_t$: done (if the reward-to-go is complete)
 
-Then, there will be ```EP_UPDATE```$\times$```(avg. number of timesteps per problem)``` of transitions  stored in the buffer defined in ```ReplayBuffer.py```. Then, we perform ```UPDATE_LOOP``` iterations of updating the actor, critic, and target critic networks by sampling ```BATCH_SIZE``` number of transitions from the buffer. Here are how each of the networks are updated:
+Then, there will be ```TO_EPISODES```$\times$```(avg. number of timesteps per problem)``` of transitions  stored in the buffer defined in ```ReplayBuffer.py```. Then, we perform ```UPDATE_LOOP``` iterations of updating the actor, critic, and target critic networks by sampling ```BATCH_SIZE``` number of transitions from the buffer. Here are how each of the networks are updated:
 
 - Critic: loss is means-squared error between $V_\phi(s_t)$ and  $\hat{R}_t)$ where $\hat{R}_t$ is the full reward-to-go
 - Actor: loss is the negative mean of Q-values $\frac{1}{S} \sum_{i=1}^{S} Q(s_i, \pi(s_i))$

@@ -4,12 +4,13 @@ import torch
 class ReplayBuffer(object):
     def __init__(self, conf):
         self.conf = conf
-        self.storage_mat = np.zeros((conf.REPLAY_SIZE, conf.state_dim + 1 + conf.state_dim + 1))
+        self.state_dim = conf.nx + 1
+        self.storage_mat = np.zeros((conf.REPLAY_SIZE, self.state_dim + 1 + self.state_dim + 1))
         self.next_idx = 0
         self.full = False
         self.capacity = conf.REPLAY_SIZE
         self.batch_size = conf.BATCH_SIZE
-        self.state_dim = conf.state_dim
+        
 
     def add(self, obses_t, rewards, obses_t1, dones):
         data = self.concatenate_sample(obses_t, rewards, obses_t1, dones)
