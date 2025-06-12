@@ -38,11 +38,11 @@ if __name__ == '__main__':
 
     # initialize episode reward arrays
     ep_arr_idx = 0
-    ep_reward_arr = np.zeros(conf.NEPISODES-ep_arr_idx)*np.nan
+    ep_reward_arr = np.zeros(int(conf.TO_EPISODES*len(conf.NN_LOOPS))-ep_arr_idx)*np.nan
     update_step_counter = 0
 
     # -----Episode loop----------------------------------------------------------------------------
-    for ep in range(conf.NLOOPS):
+    for ep in range(len(conf.NN_LOOPS)):
         # collect samples
         print("Collecting samples...")
         init_rand_state = env.reset_batch(conf.TO_EPISODES)
@@ -58,12 +58,11 @@ if __name__ == '__main__':
         num_success = len(valid_samples)
         update_step_counter = trainer.learn_and_update(update_step_counter, buffer, ep)
         ep_reward_arr[ep_arr_idx : ep_arr_idx + num_success] = rewards
+        for i in range(num_success):
+            print("Episode  {}  --->   Return = {}".format(ep_arr_idx + i, rewards[i]))
         ep_arr_idx += num_success
 
-        for i in range(len(valid_samples)):
-            print("Episode  {}  --->   Return = {}".format(ep*len(valid_samples) + i, rewards[i]))
-
-        if update_step_counter > conf.NUPDATES:
+        if update_step_counter > conf.NN_LOOPS_TOTAL:
             break
     
     trainer.RL_save_weights()
