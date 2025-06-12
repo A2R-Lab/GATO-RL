@@ -44,7 +44,7 @@ T = 10  # Number of time steps
 # - Control dimension: 7 (one torque per joint)
 ICS_state = np.random.rand(14)  # Random initial state (14 elements: 7 positions + 7 velocities)
 init_TO_states = np.random.rand(T+1, conf.nx+1)  # Random initial trajectory states (14 state + 1 timestep)
-init_TO_controls = np.random.rand(T, conf.na)    # Random initial trajectory controls (7 torques) (na=nu=number of controls)
+init_TO_controls = np.random.rand(T, conf.nu)    # Random initial trajectory controls (7 torques) (na=nu=number of controls)
 
 print(ICS_state)
 print(init_TO_states)

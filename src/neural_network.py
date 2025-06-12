@@ -19,7 +19,7 @@ class ActorCriticNet:
             nn.LeakyReLU(negative_slope=0.3),
             nn.Linear(self.conf.NH1, self.conf.NH2),
             nn.LeakyReLU(negative_slope=0.3),
-            nn.Linear(self.conf.NH2, self.conf.na)
+            nn.Linear(self.conf.NH2, self.conf.nu)
         )
 
         for layer in model:
@@ -93,12 +93,12 @@ class ActorCriticNet:
             inputs=actions,
             grad_outputs=torch.ones_like(rewards),
             create_graph=True
-        )[0].view(self.batch_size, 1, self.conf.na)
+        )[0].view(self.batch_size, 1, self.conf.nu)
 
         # dQ/da = dR/da + dV(s')/ds' * ds'/da
         dQ_da = torch.bmm(dV_ds_next, ds_next_da) + dR_da
-        dQ_da = dQ_da.view(self.batch_size, 1, self.conf.na)
-        actions = self.eval(actor, states).view(self.batch_size, self.conf.na, 1)
+        dQ_da = dQ_da.view(self.batch_size, 1, self.conf.nu)
+        actions = self.eval(actor, states).view(self.batch_size, self.conf.nu, 1)
         
         loss = torch.matmul(-dQ_da, actions).mean()
         actor.zero_grad()

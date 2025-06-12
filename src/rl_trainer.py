@@ -128,13 +128,13 @@ class RLTrainer:
         if n <= 0:
             return None, None, None, 0
 
-        actions = np.zeros((n, self.conf.na))
+        actions = np.zeros((n, self.conf.nu))
         states = np.zeros((n + 1, self.state_dim))
         states[0] = init_state
 
         for i in range(n):
             if ep == 0:
-                actions[i] = np.zeros(self.conf.na)
+                actions[i] = np.zeros(self.conf.nu)
             else:
                 state_tensor = torch.tensor(states[i][None], dtype=torch.float32)
                 actions[i] = self.NN.eval(self.actor_model, state_tensor)\

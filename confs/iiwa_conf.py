@@ -33,7 +33,7 @@ X_INIT_MAX = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,               
                     1.57,1.57,1.57,1.57,1.57,1.57,1.57,(NSTEPS-1)*dt])
 nx = 14                                                                                            # Number of state variables (7 joint positions + 7 joint velocities)
 nq = 7                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
-na = 7                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
+nu = 7                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
 
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
@@ -56,7 +56,7 @@ class IiwaEnv(BaseEnv):
         super().__init__(conf)
         self.nx = conf.nx
         self.nq = conf.nq
-        self.na = conf.na
+        self.nu = conf.nu
         self.goal_ee = conf.goal_ee
 
     def reset_batch(self, batch_size):
@@ -90,8 +90,8 @@ class IiwaEnv(BaseEnv):
             np.copy(v_init).astype(np.float32),
             action.astype(np.float32)
         )
-        Fu = np.zeros((self.nx + 1, self.na))
-        Fu[self.na:-1, :] = self.conf.robot.data.Minv
+        Fu = np.zeros((self.nx + 1, self.nu))
+        Fu[self.nu:-1, :] = self.conf.robot.data.Minv
         Fu[:self.nx, :] *= self.conf.dt
         if self.conf.NORMALIZE_INPUTS:
             Fu[:-1] *= (1 / self.conf.NORM_ARR[:-1, None])

@@ -47,11 +47,11 @@ class TrajOpt:
         # Initialize optimization variables with provided initial trajectory
         # Pack states into the optimization variable vector XU
         for i in range(N):
-            pyt.XU[i * (self.conf.nx + self.conf.na) : i * (self.conf.nx + self.conf.na) + self.conf.nx] = init_traj_states[i,:-1]
+            pyt.XU[i * (self.conf.nx + self.conf.nu) : i * (self.conf.nx + self.conf.nu) + self.conf.nx] = init_traj_states[i,:-1]
         
         # Pack controls into the optimization variable vector XU
         for i in range(N-1):
-            pyt.XU[i * (self.conf.nx + self.conf.na) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.na)] = init_traj_controls[i]
+            pyt.XU[i * (self.conf.nx + self.conf.nu) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.nu)] = init_traj_controls[i]
 
         # Set up end-effector goal constraint
         eepos_g = np.zeros(3 * pyt.N)  # End-effector position goals for all timesteps
@@ -70,9 +70,9 @@ class TrajOpt:
     
         # Extract optimized trajectory from solution vector
         # Unpack states from XU vector
-        X = np.array([pyt.XU[i * (self.conf.nx + self.conf.na) : i * (self.conf.nx + self.conf.na) + self.conf.nx] for i in range(N)]) 
+        X = np.array([pyt.XU[i * (self.conf.nx + self.conf.nu) : i * (self.conf.nx + self.conf.nu) + self.conf.nx] for i in range(N)]) 
         # Unpack controls from XU vector
-        U = np.array([pyt.XU[i * (self.conf.nx + self.conf.na) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.na)] for i in range(N-1)])
+        U = np.array([pyt.XU[i * (self.conf.nx + self.conf.nu) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.nu)] for i in range(N-1)])
         
         # Reconstruct timestep information and append to states
         timesteps = init_traj_states[:, -1].reshape(N, 1)
