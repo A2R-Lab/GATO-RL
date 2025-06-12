@@ -29,50 +29,68 @@ x_init = np.array([[1.0], [0.0]])  # Initial state (angle, angular velocity)
 pendulum.animate_robot(x_init, controls.T)
 """
 
-#-----CACTO params---------------------------------------------------------------------------------
-# TODO: fill out CACTO parameters for pendulum case
-
 #----- NN params-----------------------------------------------------------------------------------
-# TODO: fill out NN parameters for pendulum case
+NN_LOOPS = np.arange(1000, 48000, 3000)                                                            # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
+NN_LOOPS_TOTAL = 100000                                                                            # Max NNs updates total
+BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
+NH1 = 256                                                                                          # 1st hidden layer size - actor
+NH2 = 256                                                                                          # 2nd hidden layer size - actor
+NN_PATH = 'pendulum'                                                                               # Path to save the .pth files for actor and critic
+CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
+ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
+kreg_l1_A = 1e-2                                                                                   # Weight of L1 regularization in actor's network - kernel
+kreg_l2_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - kernel
+breg_l1_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - bias
+breg_l2_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - bias
+kreg_l1_C = 1e-2                                                                                   # Weight of L1 regularization in critic's network - kernel
+kreg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - kernel
+breg_l1_C = 1e-2                                                                                   # Weight of L1 regularization in critic's network - bias
+breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
 
 #-----TO params------------------------------------------------------------------------------------
-dt = pendulum.dt                                                                                    # dt=0.01
-N = 300                                                                                             # Number of time steps, i.e. max episode length
-X_INIT_MIN = np.array([0.0, 0.0, 0.0])                                                              # Initial angle (θ),  angular velocity (w), timestep (t)
-X_INIT_MAX = np.array([np.pi, 0.0, N * dt])                                                         # Final angle (θ),  angular velocity (w), timestep (t)
+TO_EPISODES = 10                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
+dt = pendulum.dt                                                                                   # timestep
+NSTEPS = 300                                                                                       # Max trajectory length
+X_INIT_MIN = np.array([0.0, 0.0, 0.0])                                                             # Initial angle (θ),  angular velocity (w), timestep (t)
+X_INIT_MAX = np.array([np.pi, 0.0, (NSTEPS-1)*dt])                                                 # Final angle (θ),  angular velocity (w), timestep (t)
+nx = 2                                                                                             # Number of state variables (7 joint positions + 7 joint velocities)
+nq = 1                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
+nu = 1                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
+
+#-----Misc params----------------------------------------------------------------------------------
+REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
+MC = 0                                                                                             # Flag to use MC or TD(n)
+UPDATE_RATE = 0.001                                                                                # Homotopy rate to update the target critic network if TD(n) is used
+NSTEPS_TD_N = int(NSTEPS/4)  
+NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
+NORM_ARR = np.array([10,10,10,10,10,10,10,10,10,10,10,10,10,10, int(NSTEPS*dt)])                   # Array of values to normalize by
+
+#-----pendulum-specific params----------------------------------------------------------------------
 goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
-
-x_dim = 2                                                                                           # Dimension of the state vector [theta (angle), w (angular velocity)]
-u_dim = 1                                                                                           # Dimension of the control [torque]
-
-nx = x_dim                                                                                          # Number of state variables 
-nq = 1                                                                                              # Number of joints (1 for pendulum)
-nu = u_dim                                                                                          # Number of actuators (1 for pendulum torque)
-
-num_vars = N * (x_dim + u_dim)                                                                      # Total number of variables in trajectory
-num_eq_constraints = 2                                                                              # Number of equality constraints
-
-grav = pendulum.g                                                                                   # Gravity constant
+u_min = 10
+u_max = 10
+g = pendulum.g
+num_eq_constraints = 2
 
 #-----Pendulum Env & SQP Solver--------------------------------------------------------------------
 class PendulumEnv(BaseEnv):
-    def __init__(self, conf, N_ts, u_min=10, u_max=10):
+    def __init__(self, conf, N_ts=NSTEPS, u_min=u_min, u_max=u_max):
         # NOTE: Passing the number of timsteps N from the environment initialization for flexibility
         # we might want to change it later depending on how the environment is initialized and called
         # in batches
         super().__init__(conf)
         self.conf = conf
-        self.dt = dt # Time step for the simulation
-        self.g = grav
-        self.N = N_ts # Number of time steps
-        self.nq = 1 # Number of joints (1 for pendulum)
-        self.nx = x_dim # Number of state variables (1 joint position + 1 joint velocity)
-        self.nu = u_dim # Number of actuators (1 for pendulum torque)
-        self.goal_state = goal_state  # Target state (pendulum upright position)
-        self.num_vars = self.N * (self.nx + self.nu) # Total number of variables in trajectory
-        self.num_eq_constraints = num_eq_constraints  # Number of equality constraints
-        self.u_min = u_min
-        self.u_max = u_max
+        self.dt = dt                                                                                # Time step for the simulation
+        self.g = g                                                                                  # gravity
+        self.N = N_ts                                                                               # Number of time steps
+        self.nq = nq                                                                                # Number of joints (1 for pendulum)
+        self.nx = nx                                                                                # Number of state variables (1 joint position + 1 joint velocity)
+        self.nu = nu                                                                                # Number of actuators (1 for pendulum torque)
+        self.goal_state = goal_state                                                                # Target state (pendulum upright position)
+        self.num_vars = self.N * (nx + nu)                                                          # Total number of variables in trajectory
+        self.num_eq_constraints = num_eq_constraints                                                # Number of equality constraints
+        self.u_min = u_min                                                                          # min control
+        self.u_max = u_max                                                                          # max control
 
     def running_cost(self, x):
         """
@@ -379,164 +397,6 @@ class PendulumEnv(BaseEnv):
 
         return constr_violation
 
-    def solve_constrained_SQP(self):    
-        """
-        Main Loop for SQP with Inequality Constraints
-        """
-
-        # Initialize params
-        max_iter = int(100) # Max number of iterations of SQP (NOT timestep of the problem)
-        stop_tol = 1e-5
-        curr_iter = 0
-
-        # Track constraint violation, running cost, and alpha per iteration of the solver
-        constr_viol_list  = np.empty((max_iter, 1))
-        running_cost_list = np.empty((max_iter, 1))
-        alpha_list        = np.empty((max_iter, 1))
-
-        # Initial random guesses
-        # NOTE: make sure the x_guess initial conditions should be theta=0, w=0
-        x_guess = np.zeros(((x_dim + u_dim)*self.N, 1))
-        lambda_guess = np.zeros(((x_dim)*self.N, 1))
-        mu_guess = np.zeros(((x_dim)*self.N, 1))
-        KKT = 1
-
-        # Filter Linear Search!
-        # NOTE: The f_best and c_best should be computed from your initial guess
-        #       not infinity (otherwise it might blow up on the first step)
-        f_best = np.inf #np.linalg.norm(running_cost(x_guess))
-        c_best = np.inf #abs(get_amnt_constr_violation(x_guess))
-        alpha = 1 # initial step size
-        rho = 0.5 # Shrink factor for alpha (step size)
-        accept_step = False # flag for accepting step or not
-
-        grad_f = self.grad_running_cost(x_guess)
-        Hess = self.hess_running_cost(x_guess)
-        g = self.get_linearized_constraints(x_guess)
-        grad_g = self.get_grad_linearized_constraints(x_guess)
-
-        while (c_best > stop_tol or             # Terminate if constraint violations is zero
-            np.linalg.norm(KKT) < stop_tol): # Terminate if nabla_p L is zero
-            if curr_iter >= max_iter:
-                break
-            
-            grad_f = self.grad_running_cost(x_guess)
-            Hess = self.hess_running_cost(x_guess)
-            g = self.get_linearized_constraints(x_guess)
-            grad_g = self.get_grad_linearized_constraints(x_guess)
-            H, h = self.create_ineq_constraints(x_guess)
-
-            # NOTE: Now we're using cvxopt to solve to consider the inequality constraints!
-            problem = Problem(sparse.csr_matrix(Hess), grad_f, 
-                            sparse.csr_matrix(H), h, 
-                            grad_g, g)
-            p_sol = solve_problem(problem, solver="osqp")
-            x_guess_dir = p_sol.x
-            lambdas_guess_dir = p_sol.y # NOTE: equality constraints multipliers
-            mus_guess_dir = p_sol.z     # NOTE: inequality constraints multipliers
-
-            # reset alpha and flag for each iteration
-            alpha = 1
-            accept_step = False
-
-            while not accept_step:
-                if alpha < 1e-5:
-                    break
-                # NOTE: Your shape was wrong dummy, the x_guess + alpha*x_guess_dir turned into a matrix
-                #       hence why you need to squeeze() it
-                if self.running_cost(x_guess[:,0] + alpha * x_guess_dir) < f_best:
-                    f_best = self.running_cost(x_guess[:,0] + alpha * x_guess_dir)
-                    accept_step = True
-                if self.get_amnt_constr_violation_update_2(x_guess[:,0] + alpha * x_guess_dir) < c_best:
-                    c_best = abs(self.get_amnt_constr_violation_update_2(x_guess[:,0] + alpha * x_guess_dir))
-                    accept_step = True
-                else:
-                    alpha = alpha * rho
-
-            # Update guesses
-            x_guess = x_guess + alpha*x_guess_dir[:, np.newaxis]
-            lambda_guess = (1-alpha)*lambda_guess + alpha*lambdas_guess_dir
-            mu_guess = (1-alpha)*mu_guess + alpha*mus_guess_dir
-
-            # Record constraint violation, running cost, alpha per iteration
-            constr_viol_list[curr_iter]  = self.get_amnt_constr_violation_update_2(x_guess) #c_best
-            running_cost_list[curr_iter] = self.running_cost(x_guess) #f_best
-            alpha_list[curr_iter]        = alpha
-
-            KKT = grad_f.squeeze() + lambdas_guess_dir @ grad_g
-            print("Curr iter: ", curr_iter, " Cost: ", running_cost_list[curr_iter],
-                " Constraint Violation: ", constr_viol_list[curr_iter])
-            #      "KKT: ", np.linalg.norm(KKT))
-
-            # Move onto next iteration
-            curr_iter += 1
-
-        print("Total iterations: ", curr_iter)
-
-        # Extract values of the pendulum system
-        pend_thetas = x_guess[0:num_vars:(x_dim+u_dim)]
-        pend_ws     = x_guess[1:num_vars:(x_dim+u_dim)]
-        pend_us     = x_guess[2:num_vars:(x_dim+u_dim)]
-
-        plot_flag = True
-        if plot_flag:
-            # Trim arrays for plotting
-            constr_viol_list  = constr_viol_list[:curr_iter]
-            running_cost_list = running_cost_list[:curr_iter]
-            alpha_list        = alpha_list[:curr_iter]
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), constr_viol_list, label="Constraint Violations")
-            #plt.yscale("log")
-            plt.ylabel('Constrain Violation')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), running_cost_list, label="Running Cost")
-            #plt.yscale("log")
-            plt.ylabel('Running Cost')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), alpha_list, label="Alphas")
-            #plt.yscale("log")
-            plt.ylabel('Alphas')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            # Plot theta (angle), w (angular velocity), and u (control)
-            plt.figure()
-            plt.plot(np.arange(self.N), pend_thetas, label="theta (angle)")
-            plt.ylabel('theta (angle)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(self.N), pend_ws, label="w (angular velocity)")
-            plt.ylabel('w (angular velocity)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(self.N), pend_us, label="u (control)")
-            plt.ylabel('u (control signal)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-        x_init = np.array([[.0],
-                        [.0]])
-        pendulum.animate_robot(x_init, pend_us.T)
-
-        return x_guess
-
     def reset_batch(self, batch_size):
         """
         Reset the environment to a random initial state for a batch of size `batch_size`.
@@ -588,6 +448,7 @@ class PendulumEnv(BaseEnv):
         Returns:
             torch.Tensor: Batch of next states with shape (batch_size, 3)
         """
+        state, action = torch.tensor(state), torch.tensor(action)
         theta, theta_dot, t = state[:, 0], state[:, 1], state[:, 2]
         u = action[:, 0]
 
