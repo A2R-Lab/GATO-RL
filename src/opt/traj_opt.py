@@ -16,7 +16,7 @@ class TrajOpt:
         self.env = env
         self.conf = conf
 
-    def solve_iiwa_unconstrained_SQP(self, ICS_state, init_traj_states, init_traj_controls):
+    def solve_iiwa_unconstrained_SQP(self, init_traj_states, init_traj_controls):
         """
         Solve trajectory optimization for IIWA robot using unconstrained Sequential Quadratic Programming (SQP).
         
@@ -25,7 +25,6 @@ class TrajOpt:
         refines the trajectory to reach the desired end-effector goal position.
         
         Args:
-            ICS_state: Initial condition state (not directly used in current implementation)
             init_TO_states (np.ndarray): Initial trajectory states with shape (N, nx+1) where N is the 
                                        number of timesteps, nx is state dimension, and +1 is for timestep
             init_TO_controls (np.ndarray): Initial trajectory controls with shape (N-1, na) where 
@@ -338,7 +337,7 @@ class TrajOpt:
         for i in range(N):
             start_idx = i * (self.conf.nx + self.conf.nu)
             # Pack state [theta, w] and control [u] for timestep i
-            x_guess[start_idx:start_idx + self.conf.nx, 0] = init_traj_states[i, :]  # theta, w
+            x_guess[start_idx:start_idx + self.conf.nx, 0] = init_traj_states[i, :self.conf.nx]  # theta, w
             x_guess[start_idx + self.conf.nx:start_idx + self.conf.nx + self.conf.nu, 0] = init_traj_controls[i, :]  # u
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
@@ -412,11 +411,14 @@ class TrajOpt:
         pend_ws     = x_guess[1:num_vars:(self.conf.x_dim+self.conf.u_dim)]
         pend_us     = x_guess[2:num_vars:(self.conf.x_dim+self.conf.u_dim)]
 
-        # Extract states in alternating format: [theta_0, w_0, theta_1, w_1, ...]
-        pend_states = np.zeros((N * self.conf.x_dim, 1))
+        # Extract X and U from pend_states and pend_us
+        pend_states = np.zeros((N, 3))
         for i in range(N):
-            pend_states[i * self.conf.x_dim, 0] = pend_thetas[i, 0]     # theta_i
-            pend_states[i * self.conf.x_dim + 1, 0] = pend_ws[i, 0]     # w_i
+            pend_states[i, 0] = pend_thetas[i, 0]
+            pend_states[i, 1] = pend_ws[i, 0]
+            pend_states[i, 2] = i * self.conf.dt 
+        X = pend_states
+        U = pend_us[:-1, :]
 
         if display_flag:
             # Trim arrays for plotting
@@ -473,8 +475,5 @@ class TrajOpt:
             x_init = np.array([[.0],
                                [.0]])
             pendulum.animate_robot(x_init, pend_us.T)
-
-        X = pend_states
-        U = pend_us
 
         return X, U
