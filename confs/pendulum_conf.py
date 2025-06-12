@@ -1,7 +1,8 @@
 import numpy as np
+import torch
 import matplotlib.pyplot as plt
-import pendulum
-from base_env import BaseEnv
+from . import pendulum
+from confs.base_env import BaseEnv
 
 """
 Trajectory optimization class for a simple pendulum system.
@@ -33,20 +34,9 @@ pendulum.animate_robot(x_init, controls.T)
 #-----TO params------------------------------------------------------------------------------------
 dt = pendulum.dt # dt=0.01
 N = 300 # Number of time steps, i.e. max episode length
-
-# Min & max values for initial state vector + timestep
-x_init_min = np.array([[0.0],  # Initial angle (theta)
-                    [0.0],  # Initial angular velocity (w)
-                    [0.0]]) # Initial timestep
-
-# Final state vector + timestep
-x_init_max = np.array([[np.pi], # Final angle (theta)
-                    [0.0],   # Final angular velocity (w)
-                    [N*dt]]) # Final timestep
-
-# Desired goal state for the pendulum
-goal_state = np.array([[np.pi],  # Desired angle (theta)
-                    [0.0]])   # Desired angular velocity (w)
+x_init_min = np.array([0.0, 0.0, 0.0])                                                              # Initial angle (θ),  angular velocity (w), timestep (t)
+x_init_max = np.array([np.pi, 0.0, N * dt])                                                         # Final angle (θ),  angular velocity (w), timestep (t)
+goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
 
 # Dimension of the state vector
 x_dim = 2  # [theta (angle), w (angular velocity)]
