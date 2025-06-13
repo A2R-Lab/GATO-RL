@@ -87,7 +87,7 @@ class PendulumEnv(BaseEnv):
         self.nx = nx                                                                                # Number of state variables (1 joint position + 1 joint velocity)
         self.nu = nu                                                                                # Number of actuators (1 for pendulum torque)
         self.goal_state = goal_state                                                                # Target state (pendulum upright position)
-        self.num_vars = self.N * (nx + nu)                                                          # Total number of variables in trajectory
+        self.num_vars = (self.N - 1) * (nx + nu) + nx                                                         # Total number of variables in trajectory
         self.num_eq_constraints = num_eq_constraints                                                # Number of equality constraints
         self.u_min = u_min                                                                          # min control
         self.u_max = u_max                                                                          # max control
@@ -98,9 +98,9 @@ class PendulumEnv(BaseEnv):
         The cost is defined as the squared difference from the target state.
 
         Args:
-            x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
+            x (np.ndarray): Trajectory of shape ((N-1)*(nx+nu)+nx,)
         Returns:
-            float: Total running cost for the trajectory.
+            float: Total running cost for the trajectory
         """
         theta = x[0::3] # angle of pendulum, extracted every third element from x starting from index 0
         w     = x[1::3] # angular velocity of pendulum that's extract every third element from x starting from index 1
@@ -110,9 +110,10 @@ class PendulumEnv(BaseEnv):
         f = []
         
         # Compute rest of the entries
-        for i in range(0, self.N):
+        for i in range(0, self.N - 1):
             f.append(10*(theta[i]-self.goal_state[0])**2 + 0.1*(w[i]-self.goal_state[1])**2 + 0.1*u[i]**2)
-        
+        f.append(10*(theta[self.N-1]-self.goal_state[0])**2 + 0.1*(w[self.N-1]-self.goal_state[1])**2)
+
         # convert list to numpy vector
         f = np.array(f).reshape(-1, 1)
         return np.sum(f)
@@ -127,13 +128,16 @@ class PendulumEnv(BaseEnv):
         Returns:
             np.ndarray: Gradient of the running cost with respect to the trajectory variables.
         """
-        grad = np.empty(((self.nx + self.nu)*self.N, 1))
+        grad = np.empty((self.num_vars, 1))
         i = 0 # index to go through
-        while i < self.num_vars:
-            grad[i] = 20 * (x[i] - self.goal_state[0]) # 20(theta_i - pi)
-            grad[i+1] = 0.2 * (x[i+1] - self.goal_state[1])      # 0.2(w_i - 0)
-            grad[i+2] = 0.2 * x[i+2]      # 0.2u_i
-            i += x_dim + u_dim
+        for i in range(self.N - 1):
+            idx = i * (self.nx + self.nu)
+            grad[idx]     = 20 * (x[idx] - self.goal_state[0])      # 20(theta_i - pi)
+            grad[idx + 1] = 0.2 * (x[idx + 1] - self.goal_state[1]) # 0.2(w_i - 0)
+            grad[idx + 2] = 0.2 * x[idx + 2]                        # 0.2u_i
+        idx = (self.N - 1) * (self.nx + self.nu)
+        grad[idx]     = 20 * (x[idx] - self.goal_state[0])
+        grad[idx + 1] = 0.2 * (x[idx + 1] - self.goal_state[1])
         return grad
     
     def hess_running_cost(self, x):
@@ -153,12 +157,14 @@ class PendulumEnv(BaseEnv):
                         [ 0,  0, .2]])
         
         # Fill the block-diagonal Hessian matrix
-        for i in range(self.N):
+        for i in range(self.N - 1):
             # Calculate the starting index for the current block
-            idx = i * (x_dim + u_dim)
+            idx = i * (self.nx + self.nu)
             # Place H_i into the Hessian matrix at the appropriate location
-            hess[idx:idx + x_dim + u_dim, idx:idx + x_dim + u_dim] = H_i
-
+            hess[idx:idx + self.nx + self.nu, idx:idx + self.nx + self.nu] = H_i
+        idx = (self.N - 1) * (self.nx + self.nu)
+        H_last = np.array([[20, 0], [0, 0.2]])
+        hess[idx:idx + self.nx, idx:idx + self.nx] = H_last
         return hess
 
     def get_linearized_constraints(self, x):
@@ -186,7 +192,7 @@ class PendulumEnv(BaseEnv):
         for i in range(1, self.N):
             # Two appended due to two equality constraints
             g.append(-theta[i-1] - dt*w[i-1] + theta[i])
-            g.append(-w[i-1] - dt*u[i-1] + dt*grav*np.sin(theta[i-1]) + w[i])
+            g.append(-w[i-1] - dt*u[i-1] + dt*self.g*np.sin(theta[i-1]) + w[i])
 
         # convert list to numpy vector
         g = np.array(g).reshape(-1, 1)
@@ -206,8 +212,8 @@ class PendulumEnv(BaseEnv):
         theta = x[0::3] # extract every third element from x starting from index 0
 
         # Add first identity matrix in G
-        I = np.eye(x_dim)
-        G[0:x_dim, 0:x_dim] = I
+        I = np.eye(self.nx)
+        G[0:self.nx, 0:self.nx] = I
 
         # Construct B, note that A changes every time it's called
         B = np.array([[0.],
@@ -217,7 +223,7 @@ class PendulumEnv(BaseEnv):
         for i in range(1, self.N):
             # Construct A for every changing theta_n
             A = np.array([[             1.,              self.dt],
-                        [-dt*grav*np.cos(theta[i-1][0]), 1.]])
+                        [-dt*self.g*np.cos(theta[i-1][0]), 1.]])
 
             # Row indices for the current block
             row_start = 2 * i
@@ -303,7 +309,7 @@ class PendulumEnv(BaseEnv):
         for i in range(1, self.N):
             # Two appended due to two equality constraints
             g.append(theta[i-1] + dt*w[i-1] - theta[i])
-            g.append(w[i-1] + dt*u[i-1] - dt*grav*np.sin(theta[i-1]) - w[i])
+            g.append(w[i-1] + dt*u[i-1] - dt*self.g*np.sin(theta[i-1]) - w[i])
 
         # convert list to numpy vector
         g = np.array(g).reshape(-1, 1)
@@ -323,31 +329,34 @@ class PendulumEnv(BaseEnv):
             np.ndarray: matrix H for the inequality constraints.
             np.ndarray: vector h for the inequality constraints.
         """
+        N = self.N
+        nx, nu = self.nx, self.nu
+        num_vars = (N-1)*(nx + nu) + nx
 
         # NOTE: First construct H (which is constant, hence why we make it once out here to save time)
         # h_n matrix that makes up the big H matrix
         h_n = np.array([[0, 0,  1],
                         [0, 0, -1]])
         p = 2 # since upper and lower bounds on control u
-        H = np.zeros((p*self.N, (x_dim+u_dim)*self.N))
+        H = np.zeros((p * (N - 1), num_vars))
 
         # Loop over for each block
-        for n in range(self.N):
+        for n in range(N-1):
             # Cacluate row and col indices for current block
-            row_start = 2*n
+            row_start = 2 * n
             row_end = row_start + 2
-            col_start = 3*n
-            col_end = col_start + 3
+            col_start = (nx + nu) * n
+            col_end = col_start + (nx + nu)
 
             # Place h_n at diagonals for H
             H[row_start:row_end, col_start:col_end] = h_n
 
         # NOTE: Now construct h
         # extract all the u's from x_guess
-        u = x[2::3].flatten()
+        u = x[2::(nx + nu)].flatten()[:N - 1]
         
         # interweave the u_max - u_n and u_min + u_n
-        h = np.empty(2*len(u))
+        h = np.empty(2 * (N - 1))
         h[0::2] = self.u_max - u
         h[1::2] = self.u_min + u
 
@@ -377,7 +386,7 @@ class PendulumEnv(BaseEnv):
         for i in range(1, self.N):
             # Two appended due to two equality constraints
             g.append(theta[i-1] + dt*w[i-1] - theta[i])
-            g.append(w[i-1] + dt*u[i-1] - dt*grav*np.sin(theta[i-1]) - w[i])
+            g.append(w[i-1] + dt*u[i-1] - dt*self.g*np.sin(theta[i-1]) - w[i])
 
         # convert list to numpy vector
         g = np.array(g).reshape(-1, 1)

@@ -91,7 +91,7 @@ class TrajOpt:
         Args:
             init_traj_states (np.ndarray): Initial trajectory states with shape (N, 2) where N is the 
                                          number of timesteps and each row contains [theta, w]
-            init_traj_controls (np.ndarray): Initial trajectory controls with shape (N, 1) where 
+            init_traj_controls (np.ndarray): Initial trajectory controls with shape (N-1, 1) where 
                                            each element is the torque input u
             display_flag (bool, optional): Flag to display convergence plots and pendulum animation. 
                                          Defaults to False.
@@ -114,6 +114,7 @@ class TrajOpt:
         stop_tol = 1e-5
         curr_iter = 0
         N = init_traj_states.shape[0]  # Number of timesteps
+        num_vars = (N-1)*(self.conf.nx+self.conf.nu)+self.conf.nx
 
         # Track constraint violation, running cost, and alpha per iteration of the solver
         constr_viol_list  = np.empty((max_iter, 1))
@@ -125,19 +126,19 @@ class TrajOpt:
 
         # Create combined trajectory array, interleaving states and controls:
         # [theta_0, w_0, u_0, theta_1, w_1, u_1, ...]
-        x_guess = np.zeros((N * (self.conf.nx + self.conf.nu), 1))
-        for i in range(N):
+        x_guess = np.zeros((num_vars, 1))
+        for i in range(N - 1):
             start_idx = i * (self.conf.nx + self.conf.nu)
-            # Pack state [theta, w] and control [u] for timestep i
-            x_guess[start_idx:start_idx + self.conf.nx, 0] = init_traj_states[i, :]  # theta, w
-            x_guess[start_idx + self.conf.nx:start_idx + self.conf.nx + self.conf.nu, 0] = init_traj_controls[i, :]  # u
+            x_guess[start_idx:start_idx + self.conf.nx, 0] = init_traj_states[i]
+            x_guess[start_idx + self.conf.nx, 0] = init_traj_controls[i, 0]
+        x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
         x_guess[0, 0] = 0.0  # theta_0
         x_guess[1, 0] = 0.0  # w_0
 
-        lambda_guess = np.zeros(((self.conf.x_dim)*N, 1))
-        mu_guess = np.zeros(((self.conf.x_dim)*N, 1))
+        lambda_guess = np.zeros(((self.conf.nx)*N, 1))
+        mu_guess = np.zeros(((self.conf.nx)*N, 1))
 
         KKT = 1
 
@@ -214,16 +215,15 @@ class TrajOpt:
         print("Total iterations: ", curr_iter)
 
         # Extract values of the pendulum system
-        num_vars = (self.conf.x_dim + self.conf.u_dim)*N
-        pend_thetas = x_guess[0:num_vars:(self.conf.x_dim+self.conf.u_dim)]
-        pend_ws     = x_guess[1:num_vars:(self.conf.x_dim+self.conf.u_dim)]
-        pend_us     = x_guess[2:num_vars:(self.conf.x_dim+self.conf.u_dim)]
+        pend_thetas = x_guess[0::3][:N]
+        pend_ws     = x_guess[1::3][:N]
+        pend_us     = x_guess[2::3]   # Already N−1
         
         # Extract states in alternating format: [theta_0, w_0, theta_1, w_1, ...]
-        pend_states = np.zeros((N * self.conf.x_dim, 1))
+        pend_states = np.zeros((N * self.conf.nx, 1))
         for i in range(N):
-            pend_states[i * self.conf.x_dim, 0] = pend_thetas[i, 0]     # theta_i
-            pend_states[i * self.conf.x_dim + 1, 0] = pend_ws[i, 0]     # w_i
+            pend_states[i * self.conf.nx, 0] = pend_thetas[i, 0]     # theta_i
+            pend_states[i * self.conf.nx + 1, 0] = pend_ws[i, 0]     # w_i
 
         if display_flag:
             # Trim arrays for plotting
@@ -271,7 +271,7 @@ class TrajOpt:
             plt.legend()
 
             plt.figure()
-            plt.plot(np.arange(N), pend_us, label="u (control)")
+            plt.plot(np.arange(N-1), pend_us, label="u (control)")
             plt.ylabel('u (control signal)')
             plt.xlabel('timestep')
             plt.grid()
@@ -316,36 +316,33 @@ class TrajOpt:
             - Displays convergence plots and animation if display_flag=True
             - Terminates when constraint violation and KKT conditions are satisfied
         """
-
-        # Initialize params
-        max_iter = 20 # Max number of iterations of SQP (NOT timestep of the problem)
-        stop_tol = 1e-5 # stop tolerance
+        max_iter = 20                                             # max iterations of SQP
+        stop_tol = 1e-5                                           # stop tolerance
         curr_iter = 0
-        N = init_traj_states.shape[0]  # Number of timesteps
+        N = init_traj_states.shape[0]                             # number of timesteps
+        num_vars = (N-1)*(self.conf.nx+self.conf.nu)+self.conf.nx # number of trajectory variables
+
 
         # Track constraint violation, running cost, and alpha per iteration of the solver
         constr_viol_list  = np.empty((max_iter, 1))
         running_cost_list = np.empty((max_iter, 1))
         alpha_list        = np.empty((max_iter, 1))
 
-        # Initial random guesses
-        # NOTE: make sure the x_guess initial conditions should be theta=0, w=0
-
         # Create combined trajectory array, interleaving states and controls:
         # [theta_0, w_0, u_0, theta_1, w_1, u_1, ...]
-        x_guess = np.zeros((N * (self.conf.nx + self.conf.nu), 1))
-        for i in range(N):
+        x_guess = np.zeros((num_vars, 1))
+        for i in range(N - 1):
             start_idx = i * (self.conf.nx + self.conf.nu)
-            # Pack state [theta, w] and control [u] for timestep i
-            x_guess[start_idx:start_idx + self.conf.nx, 0] = init_traj_states[i, :self.conf.nx]  # theta, w
-            x_guess[start_idx + self.conf.nx:start_idx + self.conf.nx + self.conf.nu, 0] = init_traj_controls[i, :]  # u
+            x_guess[start_idx:start_idx + self.conf.nx, 0] = init_traj_states[i]
+            x_guess[start_idx + self.conf.nx, 0] = init_traj_controls[i, 0]
+        x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
         x_guess[0, 0] = 0.0  # theta_0
         x_guess[1, 0] = 0.0  # w_0
         
-        lambda_guess = np.zeros(((self.conf.x_dim)*N, 1))
-        mu_guess = np.zeros(((self.conf.x_dim)*N, 1))
+        lambda_guess = np.zeros(((self.conf.nx)*N, 1))
+        mu_guess = np.zeros(((self.conf.nx)*N, 1))
 
         # Filter Linear Search!
         # NOTE: The f_best and c_best should be computed from your initial guess
@@ -365,8 +362,8 @@ class TrajOpt:
             
             p_sol, H, grad_f, grad_g, g = self.env.construct_KKT_n_solve(x_guess)
             
-            x_guess_dir = p_sol[:(self.conf.x_dim+self.conf.u_dim)*N]
-            lambdas_guess_dir = p_sol[(self.conf.x_dim+self.conf.u_dim)*N:]
+            x_guess_dir = p_sol[:num_vars]
+            lambdas_guess_dir = p_sol[num_vars:]
             
             # Filter line search
             # reset alpha and flag for each iteration
@@ -376,7 +373,7 @@ class TrajOpt:
             while not accept_step:
                 if alpha < 1e-5:
                     break
-                # NOTE: (x_guess + alpha * x_guess_dir) has shape ((u_dim+x_dim)*self.N, 1)
+                # NOTE: (x_guess + alpha * x_guess_dir) has shape ((self.nu+self.nx)*self.N, 1)
                 if np.linalg.norm(self.env.running_cost(x_guess + alpha * x_guess_dir)) < f_best:
                     f_best = self.env.running_cost(x_guess + alpha * x_guess_dir)
                     accept_step = True
@@ -406,10 +403,9 @@ class TrajOpt:
         print("Total iterations: ", curr_iter)
 
         # Extract values of the pendulum system
-        num_vars = (self.conf.x_dim + self.conf.u_dim)*N
-        pend_thetas = x_guess[0:num_vars:(self.conf.x_dim+self.conf.u_dim)]
-        pend_ws     = x_guess[1:num_vars:(self.conf.x_dim+self.conf.u_dim)]
-        pend_us     = x_guess[2:num_vars:(self.conf.x_dim+self.conf.u_dim)]
+        pend_thetas = x_guess[0::3][:N]
+        pend_ws     = x_guess[1::3][:N]
+        pend_us     = x_guess[2::3]   # Already N−1
 
         # Extract X and U from pend_states and pend_us
         pend_states = np.zeros((N, 3))
@@ -466,7 +462,7 @@ class TrajOpt:
             plt.legend()
 
             plt.figure()
-            plt.plot(np.arange(N), pend_us, label="u (control)")
+            plt.plot(np.arange(N-1), pend_us, label="u (control)")
             plt.ylabel('u (control signal)')
             plt.xlabel('timestep')
             plt.grid()

@@ -102,13 +102,15 @@ def test_reward_penalizes_large_action(env):
 def test_reward_scalar_matches_cost(env):
 	# Create 1-step trajectory
 	theta, omega, torque = np.pi, 0.5, 1.0
-	state = np.array([theta, omega, torque])
-	action = np.array([1.0])
+	state = np.array([theta, omega])
+	action = np.array([torque])
 
 	# Compute reward and cost from single-step trajectory
 	reward = env.reward(state, action)
+	env.N = 2
+	cost = env.running_cost(np.concatenate((state, action, state)))
 	env.N = 1
-	cost = env.running_cost(np.array([theta, omega, torque]))
+	cost -= env.running_cost(state)
 	assert np.isclose(reward, -cost, atol=1e-6), f"Reward and running cost mismatch: {reward} != {-cost}"
 
 def test_reward_batch_matches_scalar(env):
