@@ -320,8 +320,10 @@ class TrajOpt:
         stop_tol = 1e-5                                           # stop tolerance
         curr_iter = 0
         N = init_traj_states.shape[0]                             # number of timesteps
-        num_vars = (N-1)*(self.conf.nx+self.conf.nu)+self.conf.nx # number of trajectory variables
-
+        nx, nu = self.conf.nx, self.conf.nu
+        num_vars = (N - 1) * (nx + nu) + nx # number of trajectory variables
+        timesteps = init_traj_states[:,nx]
+        init_traj_states = init_traj_states[:,:nx]
 
         # Track constraint violation, running cost, and alpha per iteration of the solver
         constr_viol_list  = np.empty((max_iter, 1))
@@ -332,9 +334,9 @@ class TrajOpt:
         # [theta_0, w_0, u_0, theta_1, w_1, u_1, ...]
         x_guess = np.zeros((num_vars, 1))
         for i in range(N - 1):
-            start_idx = i * (self.conf.nx + self.conf.nu)
-            x_guess[start_idx:start_idx + self.conf.nx, 0] = init_traj_states[i]
-            x_guess[start_idx + self.conf.nx, 0] = init_traj_controls[i, 0]
+            start_idx = i * (nx + nu)
+            x_guess[start_idx:start_idx + nx, 0] = init_traj_states[i]
+            x_guess[start_idx + nx, 0] = init_traj_controls[i, 0]
         x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
@@ -412,9 +414,9 @@ class TrajOpt:
         for i in range(N):
             pend_states[i, 0] = pend_thetas[i, 0]
             pend_states[i, 1] = pend_ws[i, 0]
-            pend_states[i, 2] = i * self.conf.dt 
+        pend_states[:, 2] = timesteps
         X = pend_states
-        U = pend_us[:-1, :]
+        U = pend_us
 
         if display_flag:
             # Trim arrays for plotting
