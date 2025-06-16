@@ -102,40 +102,43 @@ class PendulumEnv(BaseEnv):
         Returns:
             float: Total running cost for the trajectory
         """
-        theta = x[0::3] # angle of pendulum, extracted every third element from x starting from index 0
-        w     = x[1::3] # angular velocity of pendulum that's extract every third element from x starting from index 1
-        u     = x[2::3] # control input (torque) that's extracted every third element from x starting from index 2
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
 
+        # extract theta, w, u from trajectory
+        theta = x[0::nx+nu][:N]
+        w     = x[1::nx+nu][:N]
+        u     = x[2::nx+nu][:N-1]
+    
         # running cost vector f
-        f = []
-        
-        # Compute rest of the entries
-        for i in range(0, self.N - 1):
-            f.append(10*(theta[i]-self.goal_state[0])**2 + 0.1*(w[i]-self.goal_state[1])**2 + 0.1*u[i]**2)
-        f.append(10*(theta[self.N-1]-self.goal_state[0])**2 + 0.1*(w[self.N-1]-self.goal_state[1])**2)
-
-        # convert list to numpy vector
-        f = np.array(f).reshape(-1, 1)
+        f = np.zeros((N))
+        for i in range(0, N - 1):
+            f[i] = 10*(theta[i]-self.goal_state[0])**2 + 0.1*(w[i]-self.goal_state[1])**2 + 0.1*u[i]**2
+        f[N - 1] = 10*(theta[N-1]-self.goal_state[0])**2 + 0.1*(w[N-1]-self.goal_state[1])**2
         return np.sum(f)
     
     def grad_running_cost(self, x):
         """
         Get the gradient of the running cost from the given trajectory:
-        x = [theta_0, w_0, u_0, ..., theta_N, w_N, u_N]^T
+        x = [theta_0, w_0, u_0, ..., theta_N, w_N]^T
 
         Args:
-            x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
+            x (np.ndarray): Trajectory of shape ((N-1)*(nx+nu)+nx, 1).
         Returns:
             np.ndarray: Gradient of the running cost with respect to the trajectory variables.
         """
-        grad = np.empty((self.num_vars, 1))
-        i = 0 # index to go through
-        for i in range(self.N - 1):
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
+        grad = np.zeros_like(x)
+
+        for i in range(N - 1):
             idx = i * (self.nx + self.nu)
             grad[idx]     = 20 * (x[idx] - self.goal_state[0])      # 20(theta_i - pi)
             grad[idx + 1] = 0.2 * (x[idx + 1] - self.goal_state[1]) # 0.2(w_i - 0)
             grad[idx + 2] = 0.2 * x[idx + 2]                        # 0.2u_i
-        idx = (self.N - 1) * (self.nx + self.nu)
+        idx = (N - 1) * (self.nx + self.nu)
         grad[idx]     = 20 * (x[idx] - self.goal_state[0])
         grad[idx + 1] = 0.2 * (x[idx + 1] - self.goal_state[1])
         return grad
@@ -143,60 +146,63 @@ class PendulumEnv(BaseEnv):
     def hess_running_cost(self, x):
         """
         Get the Hessian of the running cost from the given trajectory:
-        x = [theta_0, w_0, u_0, ..., theta_N, w_N, u_N]^T
+        x = [theta_0, w_0, u_0, ..., theta_N, w_N]^T
 
         Args:
-            x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
+            x (np.ndarray): Trajectory of shape (nx+nu, N+1).
         Returns:
             np.ndarray: Hessian of the running cost with respect to the trajectory variables.
         """
-        hess = np.zeros((self.num_vars, self.num_vars))  # Initialize Hessian matrix
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
+        hess = np.zeros((num_vars, num_vars))
+
         # Define the block-diagonal Hessian for each time step
         H_i = np.array([[20,  0,  0],
                         [ 0, .2,  0],
                         [ 0,  0, .2]])
         
         # Fill the block-diagonal Hessian matrix
-        for i in range(self.N - 1):
-            # Calculate the starting index for the current block
-            idx = i * (self.nx + self.nu)
+        for i in range(N - 1):
             # Place H_i into the Hessian matrix at the appropriate location
-            hess[idx:idx + self.nx + self.nu, idx:idx + self.nx + self.nu] = H_i
-        idx = (self.N - 1) * (self.nx + self.nu)
+            start = i * (nx + nu)
+            end = start + nx + nu
+            hess[start:end, start:end] = H_i
+        start = (N - 1) * (nx + nu)
         H_last = np.array([[20, 0], [0, 0.2]])
-        hess[idx:idx + self.nx, idx:idx + self.nx] = H_last
+        hess[start:start+nx, start:start+nx] = H_last
         return hess
 
     def get_linearized_constraints(self, x):
         """
         Get the linearized constraints of the equality constraints from the given trajectory:
-        x = [theta_0, w_0, u_0, ..., theta_N, w_N, u_N]^T
+        x = [theta_0, w_0, u_0, ..., theta_N, w_N]^T
 
         Args:
             x (np.ndarray): Trajectory of shape (nx+nu, N+1) where nx is the number of state variables.
         Returns:
             np.ndarray: Linearized constraints vector g.
         """
-        theta = x[0::3] # extract every third element from x starting from index 0
-        w     = x[1::3]
-        u     = x[2::3]
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
 
-        # constraint vector g
-        g = []
+        # extract theta, w, u from trajectory
+        theta = x[0::nx+nu][:N]
+        w     = x[1::nx+nu][:N]
+        u     = x[2::nx+nu][:N-1]
 
         # Add first two elements, which are our initial states (zeros)
-        g.append(np.array([0]))
-        g.append(np.array([0]))
+        g = [0, 0]
 
         # Compute rest of the entries
-        for i in range(1, self.N):
+        for i in range(1, N):
             # Two appended due to two equality constraints
             g.append(-theta[i-1] - dt*w[i-1] + theta[i])
             g.append(-w[i-1] - dt*u[i-1] + dt*self.g*np.sin(theta[i-1]) + w[i])
 
-        # convert list to numpy vector
-        g = np.array(g).reshape(-1, 1)
-        return g
+        return np.vstack(g)
     
     def get_grad_linearized_constraints(self, x):
         """
@@ -207,20 +213,24 @@ class PendulumEnv(BaseEnv):
         Returns:
             np.ndarray: Linearized constraints matrix G.
         """
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
+
         # Intialize the gradient matrix G
-        G = np.zeros((self.num_eq_constraints*self.N, self.num_vars))
-        theta = x[0::3] # extract every third element from x starting from index 0
+        G = np.zeros((self.num_eq_constraints*N, num_vars))
+        theta = x[0::3]
 
         # Add first identity matrix in G
-        I = np.eye(self.nx)
-        G[0:self.nx, 0:self.nx] = I
+        I = np.eye(nx)
+        G[:nx, :nx] = I
 
         # Construct B, note that A changes every time it's called
         B = np.array([[0.],
                     [dt]])
 
         # Construct the G matrix
-        for i in range(1, self.N):
+        for i in range(1, N):
             # Construct A for every changing theta_n
             A = np.array([[             1.,              self.dt],
                         [-dt*self.g*np.cos(theta[i-1][0]), 1.]])
@@ -270,6 +280,10 @@ class PendulumEnv(BaseEnv):
             np.ndarray: grad_g Gradient of the linearized constraints.
             np.ndarray: g Linearized constraints vector.
         """
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
+
         grad_f = self.grad_running_cost(x)
         H = self.hess_running_cost(x)
         g = self.get_linearized_constraints(x)
@@ -277,14 +291,13 @@ class PendulumEnv(BaseEnv):
 
         num_constr_grad_g = grad_g.shape[0]
 
-        KKT_mat = np.zeros((self.num_vars + num_constr_grad_g,
-                            self.num_vars + num_constr_grad_g))
-        KKT_mat[0:self.num_vars, 0:self.num_vars] = H
-        KKT_mat[self.num_vars:, 0:self.num_vars]  = grad_g
-        KKT_mat[0:self.num_vars, self.num_vars:]  = grad_g.T
+        KKT_mat = np.zeros((num_vars + num_constr_grad_g,
+                            num_vars + num_constr_grad_g))
+        KKT_mat[0:num_vars, 0:num_vars] = H
+        KKT_mat[num_vars:, 0:num_vars]  = grad_g
+        KKT_mat[0:num_vars, num_vars:]  = grad_g.T
 
         p_sol = np.linalg.solve(KKT_mat, np.vstack((-grad_f, g)))
-
         return p_sol, H, grad_f, grad_g, g
     
     def get_amnt_constr_violation(self, x):
@@ -298,7 +311,8 @@ class PendulumEnv(BaseEnv):
         Returns:
             np.ndarray: Sum of the absolute values of the equality constraints.
         """
-        theta = x[0::3] # extract every third element from x starting from index 0
+        N = int(x.shape[0] / (self.nx + self.nu))
+        theta = x[0::3]
         w     = x[1::3]
         u     = x[2::3]
 
@@ -306,7 +320,7 @@ class PendulumEnv(BaseEnv):
         g = []
 
         # Compute rest of the entries
-        for i in range(1, self.N):
+        for i in range(1, N):
             # Two appended due to two equality constraints
             g.append(theta[i-1] + dt*w[i-1] - theta[i])
             g.append(w[i-1] + dt*u[i-1] - dt*self.g*np.sin(theta[i-1]) - w[i])
@@ -316,7 +330,6 @@ class PendulumEnv(BaseEnv):
 
         # get absolute value sum of g
         constr_violation = np.sum(np.abs(g))
-
         return constr_violation
     
     def create_ineq_constraints(self, x):
