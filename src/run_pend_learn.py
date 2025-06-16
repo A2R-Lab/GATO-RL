@@ -56,9 +56,13 @@ if __name__ == '__main__':
         # Update nns and record rewards
         num_success = len(valid_samples)
         update_step_counter = trainer.learn_and_update(update_step_counter, buffer, ep)
+        print(f"{'Episode':>8} | {'Return':>12}")
+        print("-" * 25)
+
+        for offset, reward in enumerate(rewards, start=ep_arr_idx):
+            print(f"{offset:8d} | {reward:12.3f}")
+
         ep_reward_arr[ep_arr_idx : ep_arr_idx + num_success] = rewards
-        for i in range(num_success):
-            print("Episode  {}  --->   Return = {}".format(ep_arr_idx + i, rewards[i]))
         ep_arr_idx += num_success
 
         if update_step_counter > conf.NN_LOOPS_TOTAL:
