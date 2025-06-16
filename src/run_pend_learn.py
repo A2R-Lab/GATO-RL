@@ -50,7 +50,6 @@ if __name__ == '__main__':
         valid_samples = [sample for sample in samples if sample]
         
         # add samples to replay buffer
-        print(f"Compute_sample {len(valid_samples)}/{conf.TO_EPISODES} success")
         states, partial_rewards, state_nexts, dones, rewards = zip(*valid_samples)
         buffer.add(states, partial_rewards, state_nexts, dones)
 

@@ -395,14 +395,7 @@ class TrajOpt:
             alpha_list[curr_iter]        = alpha
 
             KKT = grad_f.squeeze() + lambdas_guess_dir.T @ grad_g
-            print("Curr iter: ", curr_iter, " Cost: ", running_cost_list[curr_iter],
-                " Constraint Violation: ", constr_viol_list[curr_iter],
-                "KKT: ", np.linalg.norm(KKT))
-            
-            # Move onto next iteration
             curr_iter += 1
-
-        print("Total iterations: ", curr_iter)
 
         # Extract values of the pendulum system
         pend_thetas = x_guess[0::3][:N]
