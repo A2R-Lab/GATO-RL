@@ -98,7 +98,7 @@ class ActorCriticNet:
         # dQ/da = dR/da + dV(s')/ds' * ds'/da
         dQ_da = torch.bmm(dV_ds_next, ds_next_da) + dR_da
         dQ_da = dQ_da.view(self.batch_size, 1, self.conf.nu)
-        actions = self.eval(actor, states).view(self.batch_size, self.conf.nu, 1)
+        actions = actions.view(self.batch_size, self.conf.nu, 1)
         
         loss = torch.matmul(-dQ_da, actions).mean()
         actor.zero_grad()

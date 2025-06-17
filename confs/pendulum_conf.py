@@ -37,17 +37,9 @@ NH2 = 256                                                                       
 NN_PATH = 'pendulum'                                                                               # Path to save the .pth files for actor and critic
 CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
 ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
-kreg_l1_A = 1e-2                                                                                   # Weight of L1 regularization in actor's network - kernel
-kreg_l2_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - kernel
-breg_l1_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - bias
-breg_l2_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - bias
-kreg_l1_C = 1e-2                                                                                   # Weight of L1 regularization in critic's network - kernel
-kreg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - kernel
-breg_l1_C = 1e-2                                                                                   # Weight of L1 regularization in critic's network - bias
-breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
 
 #-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 100                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
+TO_EPISODES = 200                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = pendulum.dt                                                                                   # timestep
 NSTEPS = 300                                                                                       # Max trajectory length
 X_INIT_MIN = np.array([0.0, 0.0, 0.0])                                                             # Initial angle (θ),  angular velocity (w), timestep (t)
@@ -63,6 +55,7 @@ UPDATE_RATE = 0.001                                                             
 NSTEPS_TD_N = int(NSTEPS/4)  
 NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
 NORM_ARR = np.array([10,10,10,10,10,10,10,10,10,10,10,10,10,10, int(NSTEPS*dt)])                   # Array of values to normalize by
+scale = 1e-4
 
 #-----pendulum-specific params----------------------------------------------------------------------
 goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
@@ -86,10 +79,11 @@ class PendulumEnv(BaseEnv):
         self.nx = nx                                                                                # Number of state variables (1 joint position + 1 joint velocity)
         self.nu = nu                                                                                # Number of actuators (1 for pendulum torque)
         self.goal_state = goal_state                                                                # Target state (pendulum upright position)
-        self.num_vars = (self.N - 1) * (nx + nu) + nx                                                         # Total number of variables in trajectory
+        self.num_vars = (self.N - 1) * (nx + nu) + nx                                               # Total number of variables in trajectory
         self.num_eq_constraints = num_eq_constraints                                                # Number of equality constraints
         self.u_min = u_min                                                                          # min control
         self.u_max = u_max                                                                          # max control
+        self.scale = scale
 
     def running_cost(self, x):
         """
@@ -523,6 +517,7 @@ class PendulumEnv(BaseEnv):
         cost = 10.0 * (state[0] - goal_theta)**2 + 0.1 * (state[1] - goal_theta_dot)**2
         if action is not None:
             cost += 0.1 * action[0]**2
+        cost *= scale
         return -cost
 
     def reward_batch(self, state_batch, action_batch=None):
@@ -542,4 +537,5 @@ class PendulumEnv(BaseEnv):
         cost = 10.0 * (theta - goal_theta)**2 + 0.1 * (theta_dot - goal_theta_dot)**2
         if action_batch is not None:
             cost += 0.1 * action_batch[:, 0]**2
+        cost *= scale
         return -cost.unsqueeze(1)
