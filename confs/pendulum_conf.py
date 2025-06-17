@@ -5,7 +5,6 @@ import os
 import sys
 
 from confs import pendulum
-
 from confs.base_env import BaseEnv
 
 """
@@ -48,7 +47,7 @@ breg_l1_C = 1e-2                                                                
 breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
 
 #-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 10                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
+TO_EPISODES = 100                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = pendulum.dt                                                                                   # timestep
 NSTEPS = 300                                                                                       # Max trajectory length
 X_INIT_MIN = np.array([0.0, 0.0, 0.0])                                                             # Initial angle (θ),  angular velocity (w), timestep (t)
@@ -103,20 +102,20 @@ class PendulumEnv(BaseEnv):
             float: Total running cost for the trajectory
         """
         nx, nu = self.nx, self.nu
+        theta_g, w_g = self.goal_state
         N = (x.shape[0] - nx) // (nx + nu) + 1
-        num_vars = (N - 1) * (nx + nu) + nx
 
         # extract theta, w, u from trajectory
         theta = x[0::nx+nu][:N]
         w     = x[1::nx+nu][:N]
         u     = x[2::nx+nu][:N-1]
     
-        # running cost vector f
-        f = np.zeros((N))
-        for i in range(0, N - 1):
-            f[i] = 10*(theta[i]-self.goal_state[0])**2 + 0.1*(w[i]-self.goal_state[1])**2 + 0.1*u[i]**2
-        f[N - 1] = 10*(theta[N-1]-self.goal_state[0])**2 + 0.1*(w[N-1]-self.goal_state[1])**2
-        return np.sum(f)
+        # calculate cost
+        cost = np.sum(10  * (theta[:-1] - theta_g) ** 2 +  # 10 * (θ - θg)^2
+                      0.1 * (w[:-1] - w_g) ** 2 +          # 0.1 * (w - wg)^2
+                      0.1 * u ** 2)                        # 0.1 * (θ - θg)^2
+        cost += 10 * (theta[-1] - theta_g) ** 2 + 0.1 * (w[-1] - w_g) ** 2 
+        return cost
     
     def grad_running_cost(self, x):
         """
@@ -129,18 +128,19 @@ class PendulumEnv(BaseEnv):
             np.ndarray: Gradient of the running cost with respect to the trajectory variables.
         """
         nx, nu = self.nx, self.nu
+        theta_g, w_g = self.goal_state
         N = (x.shape[0] - nx) // (nx + nu) + 1
         num_vars = (N - 1) * (nx + nu) + nx
         grad = np.zeros_like(x)
 
         for i in range(N - 1):
-            idx = i * (self.nx + self.nu)
-            grad[idx]     = 20 * (x[idx] - self.goal_state[0])      # 20(theta_i - pi)
-            grad[idx + 1] = 0.2 * (x[idx + 1] - self.goal_state[1]) # 0.2(w_i - 0)
-            grad[idx + 2] = 0.2 * x[idx + 2]                        # 0.2u_i
-        idx = (N - 1) * (self.nx + self.nu)
-        grad[idx]     = 20 * (x[idx] - self.goal_state[0])
-        grad[idx + 1] = 0.2 * (x[idx + 1] - self.goal_state[1])
+            idx = i * (nx + nu)
+            grad[idx]     = 20 * (x[idx] - theta_g)      # 20(theta_i - pi)
+            grad[idx + 1] = 0.2 * (x[idx + 1] - w_g)     # 0.2(w_i - 0)
+            grad[idx + 2] = 0.2 * x[idx + 2]             # 0.2u_i
+        idx = (N - 1) * (nx + nu)
+        grad[idx]     = 20 * (x[idx] - theta_g)
+        grad[idx + 1] = 0.2 * (x[idx + 1] - w_g)
         return grad
     
     def hess_running_cost(self, x):
@@ -184,25 +184,26 @@ class PendulumEnv(BaseEnv):
         Returns:
             np.ndarray: Linearized constraints vector g.
         """
-        nx, nu = self.nx, self.nu
+        nx, nu, dt, grav = self.nx, self.nu, self.dt, self.g
         N = (x.shape[0] - nx) // (nx + nu) + 1
-        num_vars = (N - 1) * (nx + nu) + nx
 
         # extract theta, w, u from trajectory
         theta = x[0::nx+nu][:N]
         w     = x[1::nx+nu][:N]
         u     = x[2::nx+nu][:N-1]
 
-        # Add first two elements, which are our initial states (zeros)
-        g = [0, 0]
+        # Initial-state constraint
+        g0 = np.array([[0], [0]]).flatten()
 
-        # Compute rest of the entries
-        for i in range(1, N):
-            # Two appended due to two equality constraints
-            g.append(-theta[i-1] - dt*w[i-1] + theta[i])
-            g.append(-w[i-1] - dt*u[i-1] + dt*self.g*np.sin(theta[i-1]) + w[i])
+        # Dynamics constraints
+        g_dyn_theta = (theta[1:] - theta[:-1] - dt * w[:-1]).flatten()
+        g_dyn_w     = (w[1:] - w[:-1] - dt * (u - grav * np.sin(theta[:-1]))).flatten()
+        g_dyn = np.empty(2*(N-1))
+        g_dyn[0::2], g_dyn[1::2] = g_dyn_theta, g_dyn_w
 
-        return np.vstack(g)
+        # Stack everything into vector of shape (2N, 1)
+        g = np.concatenate([g0, g_dyn]).reshape(-1, 1)
+        return g
     
     def get_grad_linearized_constraints(self, x):
         """
@@ -311,7 +312,8 @@ class PendulumEnv(BaseEnv):
         Returns:
             np.ndarray: Sum of the absolute values of the equality constraints.
         """
-        N = int(x.shape[0] / (self.nx + self.nu))
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
         theta = x[0::3]
         w     = x[1::3]
         u     = x[2::3]
@@ -342,9 +344,9 @@ class PendulumEnv(BaseEnv):
             np.ndarray: matrix H for the inequality constraints.
             np.ndarray: vector h for the inequality constraints.
         """
-        N = self.N
         nx, nu = self.nx, self.nu
-        num_vars = (N-1)*(nx + nu) + nx
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
 
         # NOTE: First construct H (which is constant, hence why we make it once out here to save time)
         # h_n matrix that makes up the big H matrix
@@ -388,6 +390,10 @@ class PendulumEnv(BaseEnv):
         Returns:
             np.ndarray: Total constraint violation, including both equality and inequality constraints.
         """
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
+        grav = self.g
         theta = x[0::3] # extract every third element from x starting from index 0
         w     = x[1::3]
         u     = x[2::3]
@@ -396,10 +402,10 @@ class PendulumEnv(BaseEnv):
         g = []
 
         # Compute rest of the entries
-        for i in range(1, self.N):
+        for i in range(1, N):
             # Two appended due to two equality constraints
             g.append(theta[i-1] + dt*w[i-1] - theta[i])
-            g.append(w[i-1] + dt*u[i-1] - dt*self.g*np.sin(theta[i-1]) - w[i])
+            g.append(w[i-1] + dt*u[i-1] - dt*grav*np.sin(theta[i-1]) - w[i])
 
         # convert list to numpy vector
         g = np.array(g).reshape(-1, 1)

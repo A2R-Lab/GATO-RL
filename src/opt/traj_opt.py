@@ -79,6 +79,69 @@ class TrajOpt:
 
         return X, U
     
+
+    def show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
+                                pend_thetas, pend_ws, pend_us,
+                                curr_iter, pendulum, x_init=None):
+        """
+        Visualise SQP convergence metrics and pendulum trajectories.
+        """
+        # Trim arrays for plotting
+        constr_viol_list  = constr_viol_list[:curr_iter]
+        running_cost_list = running_cost_list[:curr_iter]
+        alpha_list        = alpha_list[:curr_iter]
+
+        plt.figure()
+        plt.plot(np.arange(curr_iter), constr_viol_list, label="Constraint Violations")
+        #plt.yscale("log")
+        plt.ylabel('Constraint Violation')
+        plt.xlabel('k iteration')
+        plt.grid()
+        plt.legend()
+
+        plt.figure()
+        plt.plot(np.arange(curr_iter), running_cost_list, label="Running Cost")
+        #plt.yscale("log")
+        plt.ylabel('Running Cost')
+        plt.xlabel('k iteration')
+        plt.grid()
+        plt.legend()
+
+        plt.figure()
+        plt.plot(np.arange(curr_iter), alpha_list, label="Alphas")
+        #plt.yscale("log")
+        plt.ylabel('Alphas')
+        plt.xlabel('k iteration')
+        plt.grid()
+        plt.legend()
+
+        # Plot theta (angle), w (angular velocity), and u (control)
+        plt.figure()
+        plt.plot(np.arange(N), pend_thetas, label="theta (angle)")
+        plt.ylabel('theta (angle)')
+        plt.xlabel('timestep')
+        plt.grid()
+        plt.legend()
+
+        plt.figure()
+        plt.plot(np.arange(N), pend_ws, label="w (angular velocity)")
+        plt.ylabel('w (angular velocity)')
+        plt.xlabel('timestep')
+        plt.grid()
+        plt.legend()
+
+        plt.figure()
+        plt.plot(np.arange(N-1), pend_us, label="u (control)")
+        plt.ylabel('u (control signal)')
+        plt.xlabel('timestep')
+        plt.grid()
+        plt.legend()
+
+        x_init = np.array([[.0],
+                            [.0]])
+        pendulum.animate_robot(x_init, pend_us.T)
+
+
     def solve_pend_constrained_SQP(self, init_traj_states, init_traj_controls, display_flag=False):
         """
         Solve trajectory optimization for pendulum using constrained Sequential Quadratic Programming (SQP).
@@ -113,8 +176,11 @@ class TrajOpt:
         max_iter = int(100) # Max number of iterations of SQP (NOT timestep of the problem)
         stop_tol = 1e-5
         curr_iter = 0
-        N = init_traj_states.shape[0]  # Number of timesteps
-        num_vars = (N-1)*(self.conf.nx+self.conf.nu)+self.conf.nx
+        N = init_traj_states.shape[0]
+        nx, nu = self.conf.nx, self.conf.nu
+        num_vars = (N - 1) * (nx + nu) + nx
+        timesteps = init_traj_states[:,nx]
+        init_traj_states = init_traj_states[:,:nx]
 
         # Track constraint violation, running cost, and alpha per iteration of the solver
         constr_viol_list  = np.empty((max_iter, 1))
@@ -205,86 +271,20 @@ class TrajOpt:
             alpha_list[curr_iter]        = alpha
 
             KKT = grad_f.squeeze() + lambdas_guess_dir @ grad_g
-            print("Curr iter: ", curr_iter, " Cost: ", running_cost_list[curr_iter],
-                " Constraint Violation: ", constr_viol_list[curr_iter])
-            #      "KKT: ", np.linalg.norm(KKT))
-
-            # Move onto next iteration
             curr_iter += 1
-
-        print("Total iterations: ", curr_iter)
 
         # Extract values of the pendulum system
         pend_thetas = x_guess[0::3][:N]
         pend_ws     = x_guess[1::3][:N]
         pend_us     = x_guess[2::3]   # Already N−1
-        
-        # Extract states in alternating format: [theta_0, w_0, theta_1, w_1, ...]
-        pend_states = np.zeros((N * self.conf.nx, 1))
+
+        # Extract X and U from pend_states and pend_us
+        pend_states = np.zeros((N, 3))
         for i in range(N):
-            pend_states[i * self.conf.nx, 0] = pend_thetas[i, 0]     # theta_i
-            pend_states[i * self.conf.nx + 1, 0] = pend_ws[i, 0]     # w_i
-
-        if display_flag:
-            # Trim arrays for plotting
-            constr_viol_list  = constr_viol_list[:curr_iter]
-            running_cost_list = running_cost_list[:curr_iter]
-            alpha_list        = alpha_list[:curr_iter]
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), constr_viol_list, label="Constraint Violations")
-            #plt.yscale("log")
-            plt.ylabel('Constrain Violation')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), running_cost_list, label="Running Cost")
-            #plt.yscale("log")
-            plt.ylabel('Running Cost')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), alpha_list, label="Alphas")
-            #plt.yscale("log")
-            plt.ylabel('Alphas')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            # Plot theta (angle), w (angular velocity), and u (control)
-            plt.figure()
-            plt.plot(np.arange(N), pend_thetas, label="theta (angle)")
-            plt.ylabel('theta (angle)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(N), pend_ws, label="w (angular velocity)")
-            plt.ylabel('w (angular velocity)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(N-1), pend_us, label="u (control)")
-            plt.ylabel('u (control signal)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-            x_init = np.array([[.0],
-                               [.0]])
-            pendulum.animate_robot(x_init, pend_us.T)
-
-        X = pend_states
-        U = pend_us
-
-        return X, U
+            pend_states[i, 0] = pend_thetas[i, 0]
+            pend_states[i, 1] = pend_ws[i, 0]
+        pend_states[:, 2] = timesteps
+        return pend_states, pend_us, curr_iter
 
     def solve_pend_unconstrained_SQP(self, init_traj_states, init_traj_controls, display_flag=False):
         """
@@ -408,63 +408,4 @@ class TrajOpt:
             pend_states[i, 0] = pend_thetas[i, 0]
             pend_states[i, 1] = pend_ws[i, 0]
         pend_states[:, 2] = timesteps
-        X = pend_states
-        U = pend_us
-
-        if display_flag:
-            # Trim arrays for plotting
-            constr_viol_list  = constr_viol_list[:curr_iter]
-            running_cost_list = running_cost_list[:curr_iter]
-            alpha_list        = alpha_list[:curr_iter]
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), constr_viol_list, label="Constraint Violations")
-            #plt.yscale("log")
-            plt.ylabel('Constrain Violation')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), running_cost_list, label="Running Cost")
-            #plt.yscale("log")
-            plt.ylabel('Running Cost')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(curr_iter), alpha_list, label="Alphas")
-            #plt.yscale("log")
-            plt.ylabel('Alphas')
-            plt.xlabel('k iteration')
-            plt.grid()
-            plt.legend()
-
-            # Plot theta (angle), w (angular velocity), and u (control)
-            plt.figure()
-            plt.plot(np.arange(N), pend_thetas, label="theta (angle)")
-            plt.ylabel('theta (angle)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(N), pend_ws, label="w (angular velocity)")
-            plt.ylabel('w (angular velocity)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-            plt.figure()
-            plt.plot(np.arange(N-1), pend_us, label="u (control)")
-            plt.ylabel('u (control signal)')
-            plt.xlabel('timestep')
-            plt.grid()
-            plt.legend()
-
-            x_init = np.array([[.0],
-                               [.0]])
-            pendulum.animate_robot(x_init, pend_us.T)
-
-        return X, U
+        return pend_states, pend_us, curr_iter
