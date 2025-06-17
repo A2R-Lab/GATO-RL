@@ -3,6 +3,7 @@ import math
 import numpy as np
 import torch
 import time
+import os
 
 class RLTrainer:
     def __init__(self, env, NN, conf, N_try):
@@ -118,6 +119,7 @@ class RLTrainer:
     
     def RL_save_weights(self, step='final'):
             path = f"{self.conf.NN_PATH}/N_try_{self.N_try}"
+            os.makedirs(path, exist_ok=True)
             torch.save(self.actor_model.state_dict(), f"{path}/actor_{step}.pth")
             torch.save(self.critic_model.state_dict(), f"{path}/critic_{step}.pth")
             torch.save(self.target_critic.state_dict(), f"{path}/target_critic_{step}.pth")
