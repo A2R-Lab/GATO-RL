@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from siren_pytorch import Siren
-from utils import normalize_tensor
+from src.utils import normalize_tensor
 
 
 class ActorCriticNet:
@@ -65,7 +65,7 @@ class ActorCriticNet:
         critic.zero_grad()
         loss.backward()
 
-        return full_rtg, values, self.eval(target_critic, states)
+        return loss.item(), full_rtg, values, self.eval(target_critic, states)
 
     def compute_actor_grad(self, actor, critic, states):
         actions = self.eval(actor, states)
@@ -103,28 +103,4 @@ class ActorCriticNet:
         loss = torch.matmul(-dQ_da, actions).mean()
         actor.zero_grad()
         loss.backward()
-
-    def compute_reg_loss(self, model, actor):
-        reg_loss = 0
-        if actor:
-            kreg_l1 = self.conf.kreg_l1_A
-            kreg_l2 = self.conf.kreg_l2_A
-            breg_l1 = self.conf.breg_l1_A
-            breg_l2 = self.conf.breg_l2_A
-        else:
-            kreg_l1 = self.conf.kreg_l1_C
-            kreg_l2 = self.conf.kreg_l2_C
-            breg_l1 = self.conf.breg_l1_C
-            breg_l2 = self.conf.breg_l2_C
-
-        for layer in model:
-            if isinstance(layer, nn.Linear):
-                if kreg_l1 > 0:
-                    reg_loss += kreg_l1 * torch.sum(torch.abs(layer.weight))
-                if kreg_l2 > 0:
-                    reg_loss += kreg_l2 * torch.sum(torch.pow(layer.weight, 2))
-                if breg_l1 > 0:
-                    reg_loss += breg_l1 * torch.sum(torch.abs(layer.bias))
-                if breg_l2 > 0:
-                    reg_loss += breg_l2 * torch.sum(torch.pow(layer.bias, 2))
-        return reg_loss
+        return loss.item()

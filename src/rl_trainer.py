@@ -4,6 +4,8 @@ import numpy as np
 import torch
 import time
 import os
+import collections
+import matplotlib.pyplot as plt
 
 class RLTrainer:
     def __init__(self, env, NN, conf, N_try):
@@ -17,6 +19,11 @@ class RLTrainer:
         self.target_critic = None
         self.actor_optimizer = None
         self.critic_optimizer = None
+
+        # logs for plots
+        self.critic_loss_log = []
+        self.actor_loss_log = []
+        self.return_log = []
         return
     
     def setup_model(self, recover_training=None):
@@ -45,16 +52,18 @@ class RLTrainer:
         '''
         # update critic
         self.critic_optimizer.zero_grad()
-        rtg, values, target_values = self.NN.compute_critic_grad(
+        critic_loss, rtg, values, target_values = self.NN.compute_critic_grad(
             self.critic_model, self.target_critic,
             states, next_states, partial_rtg, dones, weights
         )
         self.critic_optimizer.step()
+        self.critic_loss_log.append(critic_loss)
 
         # update actor
         self.actor_optimizer.zero_grad()
-        self.NN.compute_actor_grad(self.actor_model, self.critic_model, states)
+        actor_loss = self.NN.compute_actor_grad(self.actor_model, self.critic_model, states)
         self.actor_optimizer.step()
+        self.actor_loss_log.append(actor_loss)
 
         return rtg, values, target_values
 
@@ -114,7 +123,6 @@ class RLTrainer:
             dones[i] = int(done)
             if not done:
                 next_states[i] = states[i + self.conf.NSTEPS_TD_N]
-
         return states, rtg, next_states, dones, rewards
     
     def RL_save_weights(self, step='final'):
@@ -147,3 +155,18 @@ class RLTrainer:
                 return None, None, None, 0
 
         return init_state, states, actions, 1
+
+    def plot_training_curves(self):
+        path = f"{self.conf.NN_PATH}/N_try_{self.N_try}"
+        os.makedirs(path, exist_ok=True)
+        plt.figure(figsize=(6,4))
+        plt.plot(self.critic_loss_log, label="Critic loss")
+        plt.plot(self.actor_loss_log,  label="Actor loss")
+        plt.xlabel("Gradient update step")
+        plt.ylabel("Loss")
+        plt.yscale("log")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f"{path}/loss_curves.png", dpi=300)
+        plt.show()         

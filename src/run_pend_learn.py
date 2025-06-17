@@ -6,6 +6,7 @@ from neural_network import ActorCriticNet
 from replay_buffer import ReplayBuffer
 from rl_trainer import RLTrainer
 from opt.traj_opt import TrajOpt
+import matplotlib.pyplot as plt
 
 # NOTE: Currently broken from refactoring, will come fix this after getting the 
 # pendulum case to work (and we can actually visualize and verify the pendulum case)!
@@ -15,7 +16,7 @@ def compute_sample(args):
     ep, init_state, env = args
     init_state, init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
     if not success: return None
-    TO_states, TO_controls, iters = trajopt.solve_pend_constrained_SQP(init_states, init_controls)
+    TO_states, TO_controls, iters = trajopt.solve_pend_unconstrained_SQP(init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(
                                                             TO_controls, TO_states)
     return RL_states.tolist(), partial_rtg, next_states, done, sum(rewards), iters
@@ -68,10 +69,11 @@ if __name__ == '__main__':
         reward_log[log_ptr : log_ptr + num_samples] = rewards
         print_rewards(rewards, iters, log_ptr)
         log_ptr += num_samples
+        trainer.plot_training_curves()
 
         if update_step_ptr > conf.NN_LOOPS_TOTAL:
             break
-    
+
     trainer.RL_save_weights()
 
     
