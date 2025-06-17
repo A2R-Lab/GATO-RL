@@ -53,28 +53,3 @@ def normalize(state, state_norm_arr):
     state_norm[-1] = state_norm[-1] * 2 -1
 
     return state_norm
-
-'''
-arr = np.random.rand(64,6)
-print(arr.shape)
-a = torch.tensor(arr)
-b = tf.Variable(arr, dtype=tf.float32)
-n = np.array([10, 3, 3.14, 10, 3.14/6, 5])
-#print(a)
-#print(b)
-a = normalize_tensor_torch(a, n)
-b = normalize_tensor_tf(b, n)
-a_np = a.detach().numpy()
-b_np = b.numpy()
-# Compare the tensors
-mask = np.isclose(a_np, b_np, atol=1e-6)
-# Print comparison results
-print("Are the tensors equal? ", mask.all())
-# Print differing elements if there are any
-if not mask.all():
-    print("Differences found:")
-    print("PyTorch tensor elements where they differ:", a_np[~mask])
-    print("TensorFlow tensor elements where they differ:", b_np[~mask])
-else:
-    print("No differences found.")
-'''

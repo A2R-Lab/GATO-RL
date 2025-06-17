@@ -41,6 +41,21 @@ class ActorCriticNet:
         nn.init.constant_(model[-1].bias, 0)
         return model.to(torch.float32)
 
+    def normalize_tensor(state, state_norm_arr):
+        state_norm_time = torch.cat([
+            torch.zeros([state.shape[0], state.shape[1] - 1]),
+            torch.reshape((state[:, -1] / state_norm_arr[-1]) * 2 - 1, (state.shape[0], 1))
+        ], dim=1)
+        
+        state_norm_no_time = state / state_norm_arr
+        mask = torch.cat([
+            torch.ones([state.shape[0], state.shape[1] - 1]),
+            torch.zeros([state.shape[0], 1])
+        ], dim=1)
+        
+        state_norm = state_norm_no_time * mask + state_norm_time * (1 - mask)
+        return state_norm.to(torch.float32)
+
     def eval(self, NN, input):
         if not torch.is_tensor(input):
             input = torch.tensor(np.array(input), dtype=torch.float32)

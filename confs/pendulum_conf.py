@@ -27,17 +27,6 @@ x_init = np.array([[1.0], [0.0]])  # Initial state (angle, angular velocity)
 
 pendulum.animate_robot(x_init, controls.T)
 """
-
-#----- NN params-----------------------------------------------------------------------------------
-NN_LOOPS = np.arange(1000, 48000, 3000)                                                            # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
-NN_LOOPS_TOTAL = 100000                                                                            # Max NNs updates total
-BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
-NH1 = 256                                                                                          # 1st hidden layer size - actor
-NH2 = 256                                                                                          # 2nd hidden layer size - actor
-NN_PATH = 'pendulum'                                                                               # Path to save the .pth files for actor and critic
-CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
-ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
-
 #-----TO params------------------------------------------------------------------------------------
 TO_EPISODES = 200                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = pendulum.dt                                                                                   # timestep
@@ -48,14 +37,24 @@ nx = 2                                                                          
 nq = 1                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
 nu = 1                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
 
+#----- NN params-----------------------------------------------------------------------------------
+NN_LOOPS = np.arange(1000, 48000, 3000)                                                            # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
+NN_LOOPS_TOTAL = 100000                                                                            # Max NNs updates total
+BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
+NH1 = 256                                                                                          # 1st hidden layer size - actor
+NH2 = 256                                                                                          # 2nd hidden layer size - actor
+NN_PATH = 'pendulum'                                                                               # Path to save the .pth files for actor and critic
+CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
+ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
+NORMALIZE_INPUTS = 1                                                                               # Flag to normalize inputs (state)
+NORM_ARR = np.array([10,10,int(NSTEPS*dt)])                                                        # Array of values to normalize by
+
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
 MC = 0                                                                                             # Flag to use MC or TD(n)
 UPDATE_RATE = 0.001                                                                                # Homotopy rate to update the target critic network if TD(n) is used
-NSTEPS_TD_N = int(NSTEPS/4)  
-NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
-NORM_ARR = np.array([10,10,10,10,10,10,10,10,10,10,10,10,10,10, int(NSTEPS*dt)])                   # Array of values to normalize by
-scale = 1e-4
+NSTEPS_TD_N = int(NSTEPS/4)
+scale = 1e-4                                                                                       # Reward function scale
 
 #-----pendulum-specific params----------------------------------------------------------------------
 goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
