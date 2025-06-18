@@ -80,9 +80,9 @@ class TrajOpt:
         return X, U
     
 
-    def show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
+    def show_sqp_diagnostics(self, constr_viol_list, running_cost_list, alpha_list,
                                 pend_thetas, pend_ws, pend_us,
-                                curr_iter, pendulum, x_init=None):
+                                curr_iter, pendulum, N, x_init=None):
         """
         Visualise SQP convergence metrics and pendulum trajectories.
         """
@@ -138,7 +138,7 @@ class TrajOpt:
         plt.legend()
 
         x_init = np.array([[.0],
-                            [.0]])
+                           [.0]])
         pendulum.animate_robot(x_init, pend_us.T)
 
 
@@ -161,9 +161,9 @@ class TrajOpt:
         
         Returns:
             tuple: A tuple containing:
-                - X (np.ndarray): Optimized state trajectory in alternating format 
+                - pend_states (np.ndarray): Optimized state trajectory in alternating format 
                                   [theta_0, w_0, theta_1, w_1, ...] with shape (N*2, 1)
-                - U (np.ndarray): Optimized control trajectory with shape (N, 1)
+                - pend_us (np.ndarray): Optimized control trajectory with shape (N, 1)
         
         Notes:
             - Uses cvxopt solver for handling inequality constraints
@@ -200,8 +200,8 @@ class TrajOpt:
         x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
-        x_guess[0, 0] = 0.0  # theta_0
-        x_guess[1, 0] = 0.0  # w_0
+        #x_guess[0, 0] = 0.0  # theta_0
+        #x_guess[1, 0] = 0.0  # w_0
 
         lambda_guess = np.zeros(((self.conf.nx)*N, 1))
         mu_guess = np.zeros(((self.conf.nx)*N, 1))
@@ -271,6 +271,14 @@ class TrajOpt:
             alpha_list[curr_iter]        = alpha
 
             KKT = grad_f.squeeze() + lambdas_guess_dir @ grad_g
+
+            if display_flag:
+                print(f"Iteration {curr_iter}: "
+                      f"Constraint Violation = {constr_viol_list[curr_iter][0]:.6f}, "
+                      f"Running Cost = {running_cost_list[curr_iter][0]:.6f}, "
+                      f"Alpha = {alpha_list[curr_iter][0]:.6f}, "
+                      f"KKT Norm = {np.linalg.norm(KKT):.6f}")
+
             curr_iter += 1
 
         # Extract values of the pendulum system
@@ -284,6 +292,12 @@ class TrajOpt:
             pend_states[i, 0] = pend_thetas[i, 0]
             pend_states[i, 1] = pend_ws[i, 0]
         pend_states[:, 2] = timesteps
+
+        if display_flag:
+            self.show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
+                                    pend_thetas, pend_ws, pend_us,
+                                    curr_iter, pendulum, N)
+
         return pend_states, pend_us, curr_iter
 
     def solve_pend_unconstrained_SQP(self, init_traj_states, init_traj_controls, display_flag=False):
@@ -340,8 +354,8 @@ class TrajOpt:
         x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
-        x_guess[0, 0] = 0.0  # theta_0
-        x_guess[1, 0] = 0.0  # w_0
+        #x_guess[0, 0] = 0.0  # theta_0
+        #x_guess[1, 0] = 0.0  # w_0
         
         lambda_guess = np.zeros(((self.conf.nx)*N, 1))
         mu_guess = np.zeros(((self.conf.nx)*N, 1))
@@ -395,6 +409,14 @@ class TrajOpt:
             alpha_list[curr_iter]        = alpha
 
             KKT = grad_f.squeeze() + lambdas_guess_dir.T @ grad_g
+            
+            if display_flag:
+                print(f"Iteration {curr_iter}: "
+                      f"Constraint Violation = {constr_viol_list[curr_iter][0]:.6f}, "
+                      f"Running Cost = {running_cost_list[curr_iter][0]:.6f}, "
+                      f"Alpha = {alpha_list[curr_iter][0]:.6f}, "
+                      f"KKT Norm = {np.linalg.norm(KKT):.6f}")
+
             curr_iter += 1
 
         # Extract values of the pendulum system
@@ -408,4 +430,10 @@ class TrajOpt:
             pend_states[i, 0] = pend_thetas[i, 0]
             pend_states[i, 1] = pend_ws[i, 0]
         pend_states[:, 2] = timesteps
+
+        if display_flag:
+            self.show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
+                                    pend_thetas, pend_ws, pend_us,
+                                    curr_iter, pendulum, N)
+
         return pend_states, pend_us, curr_iter

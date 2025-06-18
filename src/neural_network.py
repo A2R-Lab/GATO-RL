@@ -64,7 +64,13 @@ class ActorCriticNet:
             norm_arr = torch.tensor(self.conf.NORM_ARR, dtype=torch.float32)
             input = normalize_tensor(input, norm_arr)
 
-        return NN(input)
+        # Squash/clamp action_space
+        # NOTE: This is currently used for the pendulum case, but may not be needed for other environments
+        action = NN(input)
+        # Enforce action bounds
+        action = torch.tanh(action) * self.conf.u_max # Assuming u_max and u_min are symmetrical
+        
+        return action
     
     def compute_critic_grad(self, critic, target_critic, states, next_states,
                             partial_rtg, dones, weights):

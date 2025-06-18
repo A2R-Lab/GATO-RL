@@ -78,7 +78,7 @@ class PendulumEnv(BaseEnv):
         self.nx = nx                                                                                # Number of state variables (1 joint position + 1 joint velocity)
         self.nu = nu                                                                                # Number of actuators (1 for pendulum torque)
         self.goal_state = goal_state                                                                # Target state (pendulum upright position)
-        self.num_vars = (self.N - 1) * (nx + nu) + nx                                               # Total number of variables in trajectory
+        self.num_vars = (self.N) * (nx + nu)                                                        # Total number of variables in trajectory
         self.num_eq_constraints = num_eq_constraints                                                # Number of equality constraints
         self.u_min = u_min                                                                          # min control
         self.u_max = u_max                                                                          # max control
@@ -90,7 +90,7 @@ class PendulumEnv(BaseEnv):
         The cost is defined as the squared difference from the target state.
 
         Args:
-            x (np.ndarray): Trajectory of shape ((N-1)*(nx+nu)+nx,)
+            x (np.ndarray): Trajectory of shape (N*(nx+nu),)
         Returns:
             float: Total running cost for the trajectory
         """

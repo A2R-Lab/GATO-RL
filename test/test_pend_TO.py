@@ -18,18 +18,19 @@ T = 400  # Number of time steps
 
 conf = importlib.import_module('pendulum_conf')
 # Option 1: Pass additional keyword arguments
-env = getattr(conf, 'PendulumEnv')(conf, N_ts=T, u_min=5, u_max=5)
+env = getattr(conf, 'PendulumEnv')(conf, N_ts=T, u_min=20, u_max=20)
 
 # Random initial state traj where each row is a state [theta (angle), w (angular vel)] at a time step
-init_traj_states = np.random.rand(T, conf.nx)
+init_traj_states = np.random.rand(T+1, conf.nx + 1)
 # Random initial trajectory controls
 init_traj_controls = np.random.rand(T, conf.nu)
 
 # Initialize and test the TO_solve method
 TO_inst = TrajOpt(env, conf)
-#traj_states, traj_controls = TO_inst.solve_pend_constrained_SQP(init_traj_states,
-#                                                                init_traj_controls,
-#                                                                display_flag=True)
-traj_states, traj_controls = TO_inst.solve_pend_unconstrained_SQP(init_traj_states,
-                                                                  init_traj_controls,
-                                                                  display_flag=True)
+traj_states, traj_controls, curr_iter = TO_inst.solve_pend_constrained_SQP(init_traj_states,
+                                                                           init_traj_controls,
+                                                                           display_flag=True)
+print("---------------------------------------------")
+traj_states, traj_controls, curr_iter = TO_inst.solve_pend_unconstrained_SQP(init_traj_states,
+                                                                             init_traj_controls,
+                                                                             display_flag=True)
