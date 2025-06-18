@@ -200,8 +200,8 @@ class TrajOpt:
         x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
-        #x_guess[0, 0] = 0.0  # theta_0
-        #x_guess[1, 0] = 0.0  # w_0
+        x_guess[0, 0] = 0.0  # theta_0
+        x_guess[1, 0] = 0.0  # w_0
 
         lambda_guess = np.zeros(((self.conf.nx)*N, 1))
         mu_guess = np.zeros(((self.conf.nx)*N, 1))
@@ -354,8 +354,8 @@ class TrajOpt:
         x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
-        #x_guess[0, 0] = 0.0  # theta_0
-        #x_guess[1, 0] = 0.0  # w_0
+        x_guess[0, 0] = 0.0  # theta_0
+        x_guess[1, 0] = 0.0  # w_0
         
         lambda_guess = np.zeros(((self.conf.nx)*N, 1))
         mu_guess = np.zeros(((self.conf.nx)*N, 1))

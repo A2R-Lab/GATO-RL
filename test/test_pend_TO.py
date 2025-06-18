@@ -14,11 +14,11 @@ from opt.traj_opt import TrajOpt
 PATH_TO_CONF = os.path.join(os.getcwd(), 'confs')
 sys.path.append(PATH_TO_CONF)
 
-T = 400  # Number of time steps
+T = 300  # Number of time steps
 
 conf = importlib.import_module('pendulum_conf')
 # Option 1: Pass additional keyword arguments
-env = getattr(conf, 'PendulumEnv')(conf, N_ts=T, u_min=20, u_max=20)
+env = getattr(conf, 'PendulumEnv')(conf, N_ts=T, u_min=5, u_max=5)
 
 # Random initial state traj where each row is a state [theta (angle), w (angular vel)] at a time step
 init_traj_states = np.random.rand(T+1, conf.nx + 1)
