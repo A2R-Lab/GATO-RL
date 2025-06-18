@@ -82,7 +82,7 @@ class TrajOpt:
 
     def show_sqp_diagnostics(self, constr_viol_list, running_cost_list, alpha_list,
                                 pend_thetas, pend_ws, pend_us,
-                                curr_iter, pendulum, N, x_init=None):
+                                curr_iter, pendulum, N, x_init=np.array([[.0], [.0]])):
         """
         Visualise SQP convergence metrics and pendulum trajectories.
         """
@@ -137,8 +137,6 @@ class TrajOpt:
         plt.grid()
         plt.legend()
 
-        x_init = np.array([[.0],
-                           [.0]])
         pendulum.animate_robot(x_init, pend_us.T)
 
 
@@ -200,8 +198,8 @@ class TrajOpt:
         x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
-        x_guess[0, 0] = 0.0  # theta_0
-        x_guess[1, 0] = 0.0  # w_0
+        #x_guess[0, 0] = 0.0  # theta_0
+        #x_guess[1, 0] = 0.0  # w_0
 
         lambda_guess = np.zeros(((self.conf.nx)*N, 1))
         mu_guess = np.zeros(((self.conf.nx)*N, 1))
@@ -296,7 +294,7 @@ class TrajOpt:
         if display_flag:
             self.show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
                                     pend_thetas, pend_ws, pend_us,
-                                    curr_iter, pendulum, N)
+                                    curr_iter, pendulum, N, x_init=np.array([[pend_states[0, 0]], [pend_states[0, 1]]]))
 
         return pend_states, pend_us, curr_iter
 
@@ -354,8 +352,8 @@ class TrajOpt:
         x_guess[-2:, 0] = init_traj_states[-1]
 
         # Ensure initial conditions are zero (theta_0 = 0, w_0 = 0) to help with convergence
-        x_guess[0, 0] = 0.0  # theta_0
-        x_guess[1, 0] = 0.0  # w_0
+        #x_guess[0, 0] = 0.0  # theta_0
+        #x_guess[1, 0] = 0.0  # w_0
         
         lambda_guess = np.zeros(((self.conf.nx)*N, 1))
         mu_guess = np.zeros(((self.conf.nx)*N, 1))
@@ -434,6 +432,6 @@ class TrajOpt:
         if display_flag:
             self.show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
                                     pend_thetas, pend_ws, pend_us,
-                                    curr_iter, pendulum, N)
+                                    curr_iter, pendulum, N, x_init=np.array([[pend_states[0, 0]], [pend_states[0, 1]]]))
 
         return pend_states, pend_us, curr_iter
