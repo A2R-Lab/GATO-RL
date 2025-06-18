@@ -317,9 +317,9 @@ class TrajOpt:
         
         Returns:
             tuple: A tuple containing:
-                - X (np.ndarray): Optimized state trajectory in alternating format
+                - pend_states (np.ndarray): Optimized state trajectory in alternating format
                                   [theta_0, w_0, theta_1, w_1, ...] with shape (N*2, 1)  
-                - U (np.ndarray): Optimized control trajectory with shape (N, 1)
+                - pend_us (np.ndarray): Optimized control trajectory with shape (N, 1)
         
         Notes:
             - Uses direct KKT system solution (no inequality constraints)
