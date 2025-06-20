@@ -7,6 +7,7 @@ from replay_buffer import ReplayBuffer
 from rl_trainer import RLTrainer
 from opt.traj_opt import TrajOpt
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 # NOTE: Currently broken from refactoring, will come fix this after getting the 
 # pendulum case to work (and we can actually visualize and verify the pendulum case)!
@@ -42,7 +43,8 @@ if __name__ == '__main__':
     nn = ActorCriticNet(env, conf)
     buffer = ReplayBuffer(conf)
     trajopt = TrajOpt(env, conf)
-    trainer = RLTrainer(env, nn, conf, 1)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    trainer = RLTrainer(env, nn, conf, timestamp)
     trainer.setup_model()
 
     # initialize episode reward arrays
@@ -74,6 +76,7 @@ if __name__ == '__main__':
         if update_step_ptr > conf.NN_LOOPS_TOTAL:
             break
 
-    trainer.RL_save_weights()
+    trainer.save_weights()
+    trainer.save_conf()
 
     

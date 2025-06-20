@@ -1,18 +1,18 @@
-import uuid
-import math
 import numpy as np
 import torch
 import time
 import os
-import collections
 import matplotlib.pyplot as plt
+import json, inspect, types
+
 
 class RLTrainer:
     def __init__(self, env, NN, conf, N_try):
         self.env = env
         self.NN = NN
         self.conf = conf
-        self.N_try = N_try
+        self.path = f"{self.conf.NN_PATH}/{N_try}"
+        os.makedirs(self.path, exist_ok=True)
         self.state_dim = conf.nx + 1
         self.actor_model = None
         self.critic_model = None
@@ -26,7 +26,7 @@ class RLTrainer:
         self.return_log = []
         return
     
-    def setup_model(self, recover_training=None):
+    def setup_model(self):
         # Create actor, critic and target NNs
         self.actor_model = self.NN.create_actor()
         self.critic_model = self.NN.create_critic_sine()
@@ -36,15 +36,7 @@ class RLTrainer:
             self.actor_model.parameters(), lr=self.conf.ACTOR_LEARNING_RATE, eps=1e-7)
         self.critic_optimizer = torch.optim.Adam(
             self.critic_model.parameters(), lr=self.conf.CRITIC_LEARNING_RATE, eps=1e-7)
-
-        #  Recover weights
-        if recover_training is not None:
-            path, N_try, step = recover_training
-            self.actor_model.load_state_dict(torch.load(f"{path}/N_try_{N_try}/actor_{step}.pth"))
-            self.critic_model.load_state_dict(torch.load(f"{path}/N_try_{N_try}/critic_{step}.pth"))
-            self.target_critic.load_state_dict(torch.load(f"{path}/N_try_{N_try}/target_critic_{step}.pth"))
-        else:
-            self.target_critic.load_state_dict(self.critic_model.state_dict())   
+        self.target_critic.load_state_dict(self.critic_model.state_dict())   
 
     def update(self, states, next_states, partial_rtg, dones, weights):
         '''
@@ -125,12 +117,30 @@ class RLTrainer:
                 next_states[i] = states[i + self.conf.NSTEPS_TD_N]
         return states, rtg, next_states, dones, rewards
     
-    def RL_save_weights(self, step='final'):
-            path = f"{self.conf.NN_PATH}/N_try_{self.N_try}"
-            os.makedirs(path, exist_ok=True)
-            torch.save(self.actor_model.state_dict(), f"{path}/actor_{step}.pth")
-            torch.save(self.critic_model.state_dict(), f"{path}/critic_{step}.pth")
-            torch.save(self.target_critic.state_dict(), f"{path}/target_critic_{step}.pth")
+    def save_weights(self, step='final'):            
+        torch.save(self.actor_model.state_dict(), f"{self.path}/actor_{step}.pth")
+        torch.save(self.critic_model.state_dict(), f"{self.path}/critic_{step}.pth")
+        torch.save(self.target_critic.state_dict(), f"{self.path}/target_critic_{step}.pth")
+        print(f"Models saved to {self.path}.")
+
+    def save_conf(self):
+        conf = {}
+        for k, v in vars(self.conf).items():
+            if k.startswith("_"):                      # skip private / dunder
+                continue
+            if isinstance(v, (types.FunctionType, types.ModuleType)):
+                continue
+            if inspect.isclass(v) or inspect.ismethod(v):
+                continue
+            if isinstance(v, np.ndarray):
+                v = v.tolist()
+            conf[k] = v
+
+        save_path = os.path.join(self.path, "conf.json")
+        with open(save_path, "w") as f:
+            json.dump(conf, f, indent=2)
+        
+        print(f"Config hyper-parameters saved to {save_path}.")
 
     def create_TO_init(self, ep, init_state):
         n = self.conf.NSTEPS - int(init_state[-1] / self.conf.dt)
@@ -157,8 +167,6 @@ class RLTrainer:
         return init_state, states, actions, 1
 
     def plot_training_curves(self):
-        path = f"{self.conf.NN_PATH}/N_try_{self.N_try}"
-        os.makedirs(path, exist_ok=True)
         plt.figure(figsize=(6,4))
         plt.plot(self.critic_loss_log, label="Critic loss")
         plt.plot(self.actor_loss_log,  label="Actor loss")
@@ -168,5 +176,6 @@ class RLTrainer:
         plt.grid(True)
         plt.legend()
         plt.tight_layout()
-        plt.savefig(f"{path}/loss_curves.png", dpi=300)
-        plt.show()         
+        plt.savefig(f"{self.path}/loss_curves.png", dpi=300)
+        plt.show()      
+        print(f"Training curves saved to {self.path}/loss_curves.png.")   
