@@ -35,11 +35,11 @@ def test_simulate_batch_shape(env):
 	assert next_states.shape == (batch_size, 3)
 
 def test_simulate_batch_equilibrium(env):
-    batch_size = 5
-    states = np.array([[0.0, 0.0, 0.0]] * batch_size, dtype=np.float32)
-    actions = np.zeros((batch_size, 1), dtype=np.float32)
-    next_states = env.simulate_batch(states, actions)
-    assert np.allclose(next_states[:, :2], states[:, :2], atol=1e-4)
+	batch_size = 5
+	states = np.array([[0.0, 0.0, 0.0]] * batch_size, dtype=np.float32)
+	actions = np.zeros((batch_size, 1), dtype=np.float32)
+	next_states = env.simulate_batch(states, actions)
+	assert np.allclose(next_states[:, :2], states[:, :2], atol=1e-4)
 
 def test_simulate_batch(env):
 	state = np.array([[np.pi, 0.0, 0.0]], dtype=np.float32)
@@ -107,11 +107,12 @@ def test_reward_scalar_matches_cost(env):
 
 	# Compute reward and cost from single-step trajectory
 	reward = env.reward(state, action)
-	env.N = 2
-	cost = env.running_cost(np.concatenate((state, action, state)))
-	env.N = 1
-	cost -= env.running_cost(state)
-	assert np.isclose(reward, -cost, atol=1e-6), f"Reward and running cost mismatch: {reward} != {-cost}"
+	full_traj = np.concatenate((state, action, state))
+	cost_full = env.running_cost(full_traj)
+	cost_terminal = env.running_cost(state)
+	cost = cost_full - cost_terminal
+
+	assert np.isclose(reward, -cost*conf.scale, atol=1e-6), f"Reward and running cost mismatch: {reward} != {-cost}"
 
 def test_reward_batch_matches_scalar(env):
 	states = torch.tensor([[0.0, 0.0, 0.0],
