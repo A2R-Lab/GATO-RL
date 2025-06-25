@@ -79,10 +79,9 @@ class TrajOpt:
 
         return X, U
     
-
     def show_sqp_diagnostics(self, constr_viol_list, running_cost_list, alpha_list,
                                 pend_thetas, pend_ws, pend_us,
-                                curr_iter, pendulum, N, x_init=np.array([[.0], [.0]])):
+                                curr_iter, N,  x_init=np.array([[.0], [.0]])):
         """
         Visualise SQP convergence metrics and pendulum trajectories.
         """
@@ -282,21 +281,21 @@ class TrajOpt:
         # Extract values of the pendulum system
         pend_thetas = x_guess[0::3][:N]
         pend_ws     = x_guess[1::3][:N]
-        pend_us     = x_guess[2::3]   # Already N−1
-
-        # Extract X and U from pend_states and pend_us
+        pend_us     = x_guess[2::3]
         pend_states = np.zeros((N, 3))
-        for i in range(N):
-            pend_states[i, 0] = pend_thetas[i, 0]
-            pend_states[i, 1] = pend_ws[i, 0]
-        pend_states[:, 2] = timesteps
+        pend_states[:, 0:2]  = np.hstack([pend_thetas, pend_ws])
+        pend_states[:, 2]    = timesteps
 
+        # check if success
+        final_theta_err = abs(pend_states[-1][0]-self.env.goal_state[0])
+        final_w_err = abs(pend_states[-1][1]-self.env.goal_state[1])
+        success = final_theta_err < 1e-2 and final_w_err < 1e-1 and c_best <= stop_tol
         if display_flag:
             self.show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
                                     pend_thetas, pend_ws, pend_us,
-                                    curr_iter, pendulum, N, x_init=np.array([[pend_states[0, 0]], [pend_states[0, 1]]]))
+                                    curr_iter, N, x_init=init_traj_states[0][:, None])
 
-        return pend_states, pend_us, curr_iter
+        return pend_states, pend_us, curr_iter, success
 
     def solve_pend_unconstrained_SQP(self, init_traj_states, init_traj_controls, display_flag=False):
         """
@@ -308,9 +307,9 @@ class TrajOpt:
         (system dynamics).
         
         Args:
-            init_traj_states (np.ndarray): Initial trajectory states with shape (N, 2) where N is the 
-                                         number of timesteps and each row contains [theta, w]  
-            init_traj_controls (np.ndarray): Initial trajectory controls with shape (N, 1) where
+            init_traj_states (np.ndarray): Initial trajectory states with shape (N, 3) where N is the 
+                                         number of timesteps and each row contains [theta, w, t]  
+            init_traj_controls (np.ndarray): Initial trajectory controls with shape (N-1, 1) where
                                            each element is the torque input u
             display_flag (bool, optional): Flag to display convergence plots and pendulum animation.
                                          Defaults to False.
@@ -333,17 +332,14 @@ class TrajOpt:
         curr_iter = 0
         N = init_traj_states.shape[0]                             # number of timesteps
         nx, nu = self.conf.nx, self.conf.nu
-        num_vars = (N - 1) * (nx + nu) + nx # number of trajectory variables
+        num_vars = (N - 1) * (nx + nu) + nx                       # number of trajectory variables
         timesteps = init_traj_states[:,nx]
         init_traj_states = init_traj_states[:,:nx]
+        constr_viol_list  = np.empty((max_iter, 1))               # constraint violation per iter
+        running_cost_list = np.empty((max_iter, 1))               # running cost per iter
+        alpha_list        = np.empty((max_iter, 1))               # alpha per iter
 
-        # Track constraint violation, running cost, and alpha per iteration of the solver
-        constr_viol_list  = np.empty((max_iter, 1))
-        running_cost_list = np.empty((max_iter, 1))
-        alpha_list        = np.empty((max_iter, 1))
-
-        # Create combined trajectory array, interleaving states and controls:
-        # [theta_0, w_0, u_0, theta_1, w_1, u_1, ...]
+        # Create initial guess---------------------------------------------------------------------
         x_guess = np.zeros((num_vars, 1))
         for i in range(N - 1):
             start_idx = i * (nx + nu)
@@ -358,52 +354,42 @@ class TrajOpt:
         lambda_guess = np.zeros(((self.conf.nx)*N, 1))
         mu_guess = np.zeros(((self.conf.nx)*N, 1))
 
-        # Filter Linear Search!
-        # NOTE: The f_best and c_best should be computed from your initial guess
-        #       not infinity (otherwise it might blow up on the first step)
-        f_best = np.inf #np.linalg.norm(running_cost(x_guess))
-        c_best = np.inf #abs(get_amnt_constr_violation(x_guess))
-        alpha = 1 # initial step size
-        rho = 0.5 # Shrink factor for alpha (step size)
-        accept_step = False # flag for accepting step or not
+        f_best = np.inf
+        c_best = np.inf
+        rho = 0.5                            # Shrink factor for alpha (step size)
+        KKT = np.inf
 
-
-        while (c_best > stop_tol or             # Terminate if constraint violations is zero
-            np.linalg.norm(KKT) > stop_tol): # Terminate if nabla_p L is zero
+        while (c_best > stop_tol or              # Terminate if constraint violations is zero
+            np.linalg.norm(KKT) > stop_tol) or\
+            (abs(x_guess[-2]-self.env.goal_state[0]) >= 1e-2) or\
+            (abs(x_guess[-1]-self.env.goal_state[1]) >= 1e-1): 
             
             if curr_iter >= max_iter:
                 break
             
             p_sol, H, grad_f, grad_g, g = self.env.construct_KKT_n_solve(x_guess)
+            x_guess_dir, lambdas_guess_dir = p_sol[:num_vars], p_sol[num_vars:]
             
-            x_guess_dir = p_sol[:num_vars]
-            lambdas_guess_dir = p_sol[num_vars:]
-            
-            # Filter line search
-            # reset alpha and flag for each iteration
+            # Filter line search-------------------------------------------------------------------
             alpha = 1
-            accept_step = False
+            while alpha >= 1e-5:
+                x_new = x_guess + alpha * x_guess_dir
+                cost_new = np.linalg.norm(self.env.running_cost(x_new))
+                constr_new = self.env.get_amnt_constr_violation(x_new)
 
-            while not accept_step:
-                if alpha < 1e-5:
+                if cost_new < f_best or constr_new < c_best:
+                    f_best = min(f_best, cost_new)
+                    c_best = min(c_best, abs(constr_new))
                     break
-                # NOTE: (x_guess + alpha * x_guess_dir) has shape ((self.nu+self.nx)*self.N, 1)
-                if np.linalg.norm(self.env.running_cost(x_guess + alpha * x_guess_dir)) < f_best:
-                    f_best = self.env.running_cost(x_guess + alpha * x_guess_dir)
-                    accept_step = True
-                if self.env.get_amnt_constr_violation(x_guess + alpha * x_guess_dir) < c_best:
-                    c_best = abs(self.env.get_amnt_constr_violation(x_guess + alpha * x_guess_dir))
-                    accept_step = True
-                else:
-                    alpha = alpha * rho
+                alpha *= rho
 
-            # Update guesses
+            # Update guesses-----------------------------------------------------------------------
             x_guess = x_guess + alpha*x_guess_dir
             lambda_guess = (1-alpha)*lambda_guess + alpha*lambdas_guess_dir
 
-            # Record constraint violation, running cost, alpha per iteration
+            # Record constraint violation, running cost, alpha per iteration-----------------------
             constr_viol_list[curr_iter]  = self.env.get_amnt_constr_violation(x_guess)
-            running_cost_list[curr_iter] = np.linalg.norm(self.env.running_cost(x_guess)) #f_best
+            running_cost_list[curr_iter] = np.linalg.norm(self.env.running_cost(x_guess))
             alpha_list[curr_iter]        = alpha
 
             KKT = grad_f.squeeze() + lambdas_guess_dir.T @ grad_g
@@ -417,21 +403,21 @@ class TrajOpt:
 
             curr_iter += 1
 
-        # Extract values of the pendulum system
+        # Extract X and U--------------------------------------------------------------------------
         pend_thetas = x_guess[0::3][:N]
         pend_ws     = x_guess[1::3][:N]
-        pend_us     = x_guess[2::3]   # Already N−1
-
-        # Extract X and U from pend_states and pend_us
+        pend_us     = x_guess[2::3]
         pend_states = np.zeros((N, 3))
-        for i in range(N):
-            pend_states[i, 0] = pend_thetas[i, 0]
-            pend_states[i, 1] = pend_ws[i, 0]
-        pend_states[:, 2] = timesteps
-
+        pend_states[:, 0:2]  = np.hstack([pend_thetas, pend_ws])
+        pend_states[:, 2]    = timesteps
+        # check if success
+        final_theta_err = abs(pend_states[-1][0]-self.env.goal_state[0])
+        final_w_err = abs(pend_states[-1][1]-self.env.goal_state[1])
+        success = final_theta_err < 1e-2 and final_w_err < 1e-1 and c_best <= stop_tol
+        # print(success, final_theta_err, final_w_err, c_best, curr_iter)
         if display_flag:
             self.show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
                                     pend_thetas, pend_ws, pend_us,
-                                    curr_iter, pendulum, N, x_init=np.array([[pend_states[0, 0]], [pend_states[0, 1]]]))
+                                    curr_iter, N, x_init=init_traj_states[0, :2].T)
 
-        return pend_states, pend_us, curr_iter
+        return pend_states, pend_us, curr_iter, success
