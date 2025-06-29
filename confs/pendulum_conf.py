@@ -28,33 +28,33 @@ x_init = np.array([[1.0], [0.0]])  # Initial state (angle, angular velocity)
 pendulum.animate_robot(x_init, controls.T)
 """
 #-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 200                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
+TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
 dt = pendulum.dt                                                                                   # timestep
-NSTEPS = 300                                                                                       # Max trajectory length
-X_INIT_MIN = np.array([0.0, 0.0, 0.0])                                                             # Initial angle (θ),  angular velocity (w), timestep (t)
-X_INIT_MAX = np.array([np.pi, 0.0, (NSTEPS-1)*dt])                                                 # Final angle (θ),  angular velocity (w), timestep (t)
+NSTEPS = 500                                                                                       # Max trajectory length
+X_INIT_MIN = np.array([0.0, -10.0, 0.0])                                                           # Initial angle (θ),  angular velocity (w), timestep (t)
+X_INIT_MAX = np.array([2*np.pi, 10.0, (NSTEPS-1)//2*dt])                                           # Final angle (θ),  angular velocity (w), timestep (t)
 nx = 2                                                                                             # Number of state variables (7 joint positions + 7 joint velocities)
 nq = 1                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
 nu = 1                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
 
 #----- NN params-----------------------------------------------------------------------------------
-NN_LOOPS = np.arange(1000, 48000, 3000)                                                            # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
-NN_LOOPS_TOTAL = 100000                                                                            # Max NNs updates total
+NN_LOOPS = np.arange(100, 4800, 300)                                                               # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
+NN_LOOPS_TOTAL = 10000                                                                             # Max NNs updates total
 BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
-NH1 = 256                                                                                          # 1st hidden layer size - actor
-NH2 = 256                                                                                          # 2nd hidden layer size - actor
+NH1 = 64                                                                                           # 1st hidden layer size - actor
+NH2 = 64                                                                                           # 2nd hidden layer size - actor
 NN_PATH = 'pendulum'                                                                               # Path to save the .pth files for actor and critic
 CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
 ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
-NORMALIZE_INPUTS = 1                                                                               # Flag to normalize inputs (state)
+NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
 NORM_ARR = np.array([10,10,int(NSTEPS*dt)])                                                        # Array of values to normalize by
 
 #-----Misc params----------------------------------------------------------------------------------
-REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
+REPLAY_SIZE = 2**20                                                                                # Size of the replay buffer
 MC = 0                                                                                             # Flag to use MC or TD(n)
 UPDATE_RATE = 0.001                                                                                # Homotopy rate to update the target critic network if TD(n) is used
 NSTEPS_TD_N = int(NSTEPS/4)
-scale = 1e-4                                                                                       # Reward function scale
+scale = 1e-3                                                                                       # Reward function scale
 
 #-----pendulum-specific params----------------------------------------------------------------------
 goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
@@ -450,7 +450,7 @@ class PendulumEnv(BaseEnv):
         Returns:
             np.ndarray: Next state with shape (3,) [θ_{t+1}, θ̇_{t+1}, t+1]
         """
-        theta_next = state[0] + self.dt * state[1]
+        theta_next = (state[0] + self.dt * state[1]) % (2 * np.pi)
         theta_dot_next = state[1] + self.dt * (action[0] - self.g * np.sin(state[0]))
         t_next = state[2] + self.dt
         return np.array([theta_next, theta_dot_next, t_next])
@@ -463,17 +463,16 @@ class PendulumEnv(BaseEnv):
             neural_network.compute_actor_grad()
 
         Args:
-            state (np.ndarray): Batch of states with shape (batch_size, 3)
-            action (np.ndarray): Batch of actions with shape (batch_size, 1)
+            state (torch.Tensor): Batch of states with shape (batch_size, 3)
+            action (torch.Tensor): Batch of actions with shape (batch_size, 1)
 
         Returns:
             torch.Tensor: Batch of next states with shape (batch_size, 3)
         """
-        state, action = torch.tensor(state), torch.tensor(action)
         theta, theta_dot, t = state[:, 0], state[:, 1], state[:, 2]
         u = action[:, 0]
 
-        theta_next = theta + self.dt * theta_dot
+        theta_next = (theta + self.dt * theta_dot ) % (2 * np.pi)
         theta_dot_next = theta_dot + self.dt * (u - self.g * torch.sin(theta))
         t_next = t + self.dt
         return torch.stack([theta_next, theta_dot_next, t_next], dim=1)
@@ -487,17 +486,27 @@ class PendulumEnv(BaseEnv):
             neural_network.compute_actor_grad()
 
         Args:
-            state (np.ndarray): Batch of states (batch_size, 3)
-            action (np.ndarray): Batch of actions (batch_size, 1)
+            state (torch.Tensor): Batch of states (batch_size, 3)
+            action (torch.Tensor): Batch of actions (batch_size, 1)
 
         Returns:
             torch.Tensor: Batch of derivative matrices (batch_size, 3, 1)
         """
-        batch_size = state.shape[0]
-        dt = self.conf.dt
-        jac = np.zeros((batch_size, 3, 1))
-        jac[:, 1, 0] = dt
-        return torch.tensor(jac, dtype=torch.float32)
+        action = action.clone().detach().requires_grad_(True)
+        next_states = self.simulate_batch(state, action)
+
+        # Compute gradient of next_states w.r.t actions
+        jacobian = []
+        for i in range(next_states.shape[1]):
+            grad_i = torch.autograd.grad(
+                next_states[:, i],
+                action,
+                grad_outputs=torch.ones_like(next_states[:, i]),
+                retain_graph=True,
+                create_graph=True
+            )[0]
+            jacobian.append(grad_i.unsqueeze(1))
+        return torch.cat(jacobian, dim=1)
 
     def reward(self, state, action=None):
         """

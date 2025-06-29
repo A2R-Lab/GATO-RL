@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import time
 import os
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import json, inspect, types
 
@@ -96,26 +98,40 @@ class RLTrainer:
         return step_counter
 
     def compute_partial_rtg(self, actions, states):
+        """
+        Computes partial reward-to-go using n-step TD for a given trajectory segment.
+
+        Args:
+            actions (np.ndarray): shape (n-1, action_dim)
+            states (np.ndarray): shape (n, state_dim)
+
+        Returns:
+            states (np.ndarray): Full state rollout (n, state_dim)
+            rtg (np.ndarray): Partial reward-to-go estimates (n,)
+            next_states (np.ndarray): Bootstrap next states (n, state_dim)
+            dones (np.ndarray): Boolean flags for terminal bootstrapping (n,)
+            rewards (np.ndarray): Per-step rewards (n + 1,)
+        """
         n = self.conf.NSTEPS - int(states[0, -1] / self.conf.dt)
         rewards = np.empty(n + 1)
-        next_states = np.zeros((n + 1, self.state_dim))
-        dones = np.zeros(n + 1)
+        next_states = np.zeros((n, self.state_dim))
+        dones = np.zeros(n)
 
         # rollout and get per-step rewards
         for t in range(n-1):
             states[t + 1] = self.env.simulate(states[t], actions[t])
             rewards[t] = self.env.reward(states[t], actions[t])
-        rewards[-1] = self.env.reward(states[-1])
+        rewards[n] = self.env.reward(states[-1])
 
         # compute partial reward-to-go
-        rtg = np.array([rewards[i:min(i + self.conf.NSTEPS_TD_N, n)].sum()
-                        for i in range(n + 1)])
-        for i in range(n + 1):
+        rtg = np.array([rewards[i:min(i + self.conf.NSTEPS_TD_N, n + 1)].sum()
+                        for i in range(n)])
+        for i in range(n):
             done = self.conf.MC or i + self.conf.NSTEPS_TD_N >= n
             dones[i] = int(done)
             if not done:
                 next_states[i] = states[i + self.conf.NSTEPS_TD_N]
-        return states, rtg, next_states, dones, rewards
+        return states[:-1], rtg, next_states, dones, rewards
     
     def save_weights(self, step='final'):            
         torch.save(self.actor_model.state_dict(), f"{self.path}/actor_{step}.pth")
@@ -158,7 +174,6 @@ class RLTrainer:
                 state_tensor = torch.tensor(states[i][None], dtype=torch.float32)
                 actions[i] = self.NN.eval(self.actor_model, state_tensor)\
                                 .squeeze().cpu().detach().numpy()
-            print(f"init TO controls {i + 1}/{n}: {actions[i]}", end='\r')
             states[i + 1] = self.env.simulate(states[i], actions[i])
 
             if np.isnan(states[i + 1]).any():
@@ -172,7 +187,6 @@ class RLTrainer:
         plt.plot(self.actor_loss_log,  label="Actor loss")
         plt.xlabel("Gradient update step")
         plt.ylabel("Loss")
-        plt.yscale("log")
         plt.grid(True)
         plt.legend()
         plt.tight_layout()

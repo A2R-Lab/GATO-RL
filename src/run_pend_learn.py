@@ -17,10 +17,10 @@ def compute_sample(args):
     ep, init_state, env = args
     init_state, init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
     if not success: return None
-    TO_states, TO_controls, iters = trajopt.solve_pend_unconstrained_SQP(init_states, init_controls)
+    TO_states, TO_controls, iters, success = trajopt.solve_pend_unconstrained_SQP(init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(
                                                             TO_controls, TO_states)
-    return RL_states.tolist(), partial_rtg, next_states, done, sum(rewards), iters
+    return RL_states, partial_rtg, next_states, done, sum(rewards), iters
 
 def print_rewards(rewards, iters, log_ptr):
     print(f"{'Episode':>8} | {'Rewards':>12} | {'SQP Iterations':>11}")
@@ -61,6 +61,7 @@ if __name__ == '__main__':
         samples = [compute_sample((ep, init_rand_state[i, :], env)) for i in range(conf.TO_EPISODES)]
         samples = [sample for sample in samples if sample]
         num_samples = len(samples)
+        print(f"{num_samples}/{conf.TO_EPISODES} samples collected.")
         
         # add samples to replay buffer
         states, partial_rewards, state_nexts, dones, rewards, iters = zip(*samples)
@@ -72,10 +73,13 @@ if __name__ == '__main__':
         print_rewards(rewards, iters, log_ptr)
         log_ptr += num_samples
         trainer.plot_training_curves()
+        trainer.save_weights()
+        trainer.save_conf()
 
         if update_step_ptr > conf.NN_LOOPS_TOTAL:
             break
 
+    trainer.plot_training_curves()
     trainer.save_weights()
     trainer.save_conf()
 
