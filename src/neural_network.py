@@ -90,13 +90,11 @@ class ActorCriticNet:
 
     def compute_actor_grad(self, actor, critic, states):
         actions = self.eval(actor, states)
-        states_np, actions_np = states.detach().cpu().numpy(), actions.detach().cpu().numpy()
-        next_states = self.env.simulate_batch(states_np, actions_np)
-        next_states = next_states.clone().detach().to(torch.float32).requires_grad_(True)
+        actions.requires_grad_(True)
+        next_states = self.env.simulate_batch(states, actions)
 
         # ds'/da
-        ds_next_da = self.env.derivative_batch(states_np, actions_np)
-        ds_next_da = ds_next_da.clone().detach().to(torch.float32).requires_grad_(True)
+        ds_next_da = self.env.derivative_batch(states, actions)
 
         # dV(s')/ds'
         V_next = self.eval(critic, next_states)

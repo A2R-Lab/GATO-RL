@@ -28,22 +28,22 @@ def test_reset_batch_bounds(env):
 
 def test_simulate_batch_shape(env):
 	batch_size = 5
-	states = np.random.rand(batch_size, 3).astype(np.float32)
-	actions = np.random.rand(batch_size, 1).astype(np.float32)
+	states = torch.rand(batch_size, 3)
+	actions = torch.rand(batch_size, 1)
 	next_states = env.simulate_batch(states, actions)
 	assert isinstance(next_states, torch.Tensor)
 	assert next_states.shape == (batch_size, 3)
 
 def test_simulate_batch_equilibrium(env):
 	batch_size = 5
-	states = np.array([[0.0, 0.0, 0.0]] * batch_size, dtype=np.float32)
-	actions = np.zeros((batch_size, 1), dtype=np.float32)
+	states = torch.zeros(batch_size, 3, dtype=torch.float32)
+	actions = torch.zeros(batch_size, 1, dtype=torch.float32)
 	next_states = env.simulate_batch(states, actions)
 	assert np.allclose(next_states[:, :2], states[:, :2], atol=1e-4)
 
 def test_simulate_batch(env):
-	state = np.array([[np.pi, 0.0, 0.0]], dtype=np.float32)
-	action = np.array([[1.0]], dtype=np.float32)
+	state = torch.tensor([[np.pi, 0.0, 0.0]], dtype=torch.float32)
+	action = torch.tensor([[1.0]], dtype=torch.float32)
 	next_state = env.simulate_batch(state, action)
 	next_theta = next_state[0, 0].item()
 	next_omega = next_state[0, 1].item()
@@ -57,16 +57,16 @@ def test_simulate_batch(env):
 
 def test_derivative_batch_shape(env):
 	batch_size = 5
-	states = np.random.rand(batch_size, 3).astype(np.float32)
-	actions = np.random.rand(batch_size, 1).astype(np.float32)
+	states = torch.rand(batch_size, 3)
+	actions = torch.rand(batch_size, 1)
 	jac = env.derivative_batch(states, actions)
 	assert isinstance(jac, torch.Tensor)
 	assert jac.shape == (batch_size, 3, 1)
 
 def test_derivative_batch(env):
 	batch_size = 5
-	states = np.random.rand(batch_size, 3).astype(np.float32)
-	actions = np.random.rand(batch_size, 1).astype(np.float32)
+	states = torch.rand(batch_size, 3)
+	actions = torch.rand(batch_size, 1)
 	jac = env.derivative_batch(states, actions)
 
 	# Only ω is affected by u, with ∂ω/∂u = dt

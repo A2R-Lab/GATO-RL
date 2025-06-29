@@ -52,8 +52,8 @@ class BaseEnv:
 			neural_network.compute_actor_grad()
 
 		Args:
-			state (np.ndarray): Batch of states (batch_size, nx+1)
-			action (np.ndarray): Batch of actions (batch_size, na)
+			state (torch.Tensor): Batch of states (batch_size, nx+1)
+			action (torch.Tensor): Batch of actions (batch_size, na)
 
 		Returns:
 			torch.Tensor: Batch of derivative matrices (batch_size, nx+1, na)
@@ -68,8 +68,8 @@ class BaseEnv:
 			compute_partial_rtg()
 
 		Args:
-			state (np.ndarray): Current state.
-			action (np.ndarray, optional): Control input.
+			state (torch.Tensor): Current state.
+			action (torch.Tensor, optional): Control input.
 
 		Returns:
 			float: Reward value.
