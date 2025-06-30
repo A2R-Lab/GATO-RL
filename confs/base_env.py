@@ -36,8 +36,8 @@ class BaseEnv:
 			neural_network.compute_actor_grad()
 
 		Args:
-			state (np.ndarray): Batch of states with shape (batch_size, nx+1)
-			action (np.ndarray): Batch of actions with shape (batch_size, na)
+			state (torch.tensor): Batch of states with shape (batch_size, nx+1)
+			action (torch.tensor): Batch of actions with shape (batch_size, na)
 
 		Returns:
 			torch.Tensor: Batch of next states with shape (batch_size, nx+1)
