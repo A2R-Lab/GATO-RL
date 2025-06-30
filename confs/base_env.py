@@ -27,7 +27,23 @@ class BaseEnv:
 						appended by the timestep
 		"""
 		raise NotImplementedError
+	
+	def simulate(self, state, action):
+		"""
+		Get the next state upon applying the action.
 
+		References:
+			rl_trainer.compute_partial_rtg()
+
+		Args:
+			state (np.ndarray): Current state (nx+1,)
+			action (np.ndarray): Action (na,)
+
+		Returns:
+			np.ndarray: Next state with shape (nx+1,)
+		"""
+		raise NotImplementedError
+	
 	def simulate_batch(self, state, action):
 		"""
 		Batch version of simulate().
@@ -65,7 +81,7 @@ class BaseEnv:
 		Computes reward from state and action.
 
 		References:
-			compute_partial_rtg()
+			rl_trainer.compute_partial_rtg()
 
 		Args:
 			state (torch.Tensor): Current state.
