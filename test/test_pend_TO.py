@@ -37,10 +37,10 @@ init_traj_states[0, 1] = -1      # w
 
 # Initialize and test the TO_solve method
 TO_inst = TrajOpt(env, conf)
-traj_states, traj_controls, curr_iter = TO_inst.solve_pend_constrained_SQP(init_traj_states,
+traj_states, traj_controls, curr_iter, success = TO_inst.solve_pend_constrained_SQP(init_traj_states,
                                                                            init_traj_controls,
                                                                            display_flag=True)
 print("---------------------------------------------")
-traj_states, traj_controls, curr_iter = TO_inst.solve_pend_unconstrained_SQP(init_traj_states,
+traj_states, traj_controls, curr_iter, success = TO_inst.solve_pend_unconstrained_SQP(init_traj_states,
                                                                              init_traj_controls,
                                                                              display_flag=True)

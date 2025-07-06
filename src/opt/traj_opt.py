@@ -418,7 +418,7 @@ class TrajOpt:
         if display_flag:
             self.show_sqp_diagnostics(constr_viol_list, running_cost_list, alpha_list,
                                     pend_thetas, pend_ws, pend_us,
-                                    curr_iter, N, x_init=init_traj_states[0, :2].T)
+                                    curr_iter, N, x_init=init_traj_states[0][:, None])
 
         return pend_states, pend_us, curr_iter, success
     
