@@ -48,6 +48,7 @@ CRITIC_LEARNING_RATE = 5e-4                                                     
 ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
 NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
 NORM_ARR = np.array([10,10,int(NSTEPS*dt)])                                                        # Array of values to normalize by
+bound_NN_action = True                                                                             # Flag to bound the action output by the NN
 
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**20                                                                                # Size of the replay buffer
