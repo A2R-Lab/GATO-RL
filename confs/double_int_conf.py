@@ -7,8 +7,8 @@ from confs.base_env import BaseEnv
 
 #-----TO params------------------------------------------------------------------------------------
 TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
-dt = 0.01                                                                                          # timestep
-NSTEPS = 500                                                                                       # Max trajectory length
+dt = 0.1                                                                                           # timestep
+NSTEPS = 30                                                                                        # Max trajectory length
 X_INIT_MIN = np.array([-1.0, -1.0, 0.0])                                                           # Initial position (x), velocity (v), timestep (t)
 X_INIT_MAX = np.array([1.0, 1.0, (NSTEPS-1)*dt])                                                   # Final position (x), velocity (v), timestep (t)
 nx = 2                                                                                             # Number of state variables
@@ -46,6 +46,11 @@ class DoubleIntegratorEnv(BaseEnv):
         self.nx, self.nu = conf.nx, conf.nu
         self.dt = conf.dt
         self.num_eq_constraints = 2
+        self.w_pos = 10.0
+        self.w_vel = 0.1
+        self.w_u = 0.1
+        self.w_pos_f = 10.0
+        self.w_vel_f = 0.1
 
     def running_cost(self, x):
         nx, nu = self.nx, self.nu
@@ -57,11 +62,11 @@ class DoubleIntegratorEnv(BaseEnv):
         u   = x[2::nx+nu][:N-1]
 
         cost = np.sum(
-            10.0 * (pos[:-1] - x_g)**2 +
-            0.1  * (vel[:-1] - v_g)**2 +
-            0.1  * u**2
+            self.w_pos * (pos[:-1] - x_g)**2 +
+            self.w_vel * (vel[:-1] - v_g)**2 +
+            self.w_u  * u**2
         )
-        cost += 10.0 * (pos[-1] - x_g)**2 + 0.1 * (vel[-1] - v_g)**2
+        cost += self.w_pos_f * (pos[-1] - x_g)**2 + self.w_vel_f * (vel[-1] - v_g)**2
         return cost
 
     def grad_running_cost(self, x):
@@ -72,13 +77,13 @@ class DoubleIntegratorEnv(BaseEnv):
         grad = np.zeros_like(x)
         for i in range(N - 1):
             idx = i * (nx + nu)
-            grad[idx]     = 20.0 * (x[idx] - x_g)
-            grad[idx + 1] = 0.2  * (x[idx + 1] - v_g)
-            grad[idx + 2] = 0.2  * x[idx + 2]
+            grad[idx]     = 2 * self.w_pos * (x[idx] - x_g)
+            grad[idx + 1] = 2 * self.w_vel * (x[idx + 1] - v_g)
+            grad[idx + 2] = 2 * self.w_u  * x[idx + 2]
         # Terminal state
         idx = (N - 1) * (nx + nu)
-        grad[idx]     = 20.0 * (x[idx] - x_g)
-        grad[idx + 1] = 0.2  * (x[idx + 1] - v_g)
+        grad[idx]     = 2 * self.w_pos_f * (x[idx] - x_g)
+        grad[idx + 1] = 2 * self.w_vel_f * (x[idx + 1] - v_g)
         return grad
 
     def hess_running_cost(self, x):
@@ -88,9 +93,9 @@ class DoubleIntegratorEnv(BaseEnv):
         hess = np.zeros((num_vars, num_vars))
 
         # Define the block-diagonal Hessian for each time step
-        H_i = np.array([[20,  0,  0],
-                        [ 0, .2,  0],
-                        [ 0,  0, .2]])
+        H_i = 2* np.array([[self.w_pos,  0,  0],
+                        [ 0, self.w_vel,  0],
+                        [ 0,  0, self.w_u]])
         
         # Fill the block-diagonal Hessian matrix
         for i in range(N - 1):
@@ -99,7 +104,7 @@ class DoubleIntegratorEnv(BaseEnv):
             end = start + nx + nu
             hess[start:end, start:end] = H_i
         start = (N - 1) * (nx + nu)
-        H_last = np.array([[20, 0], [0, 0.2]])
+        H_last = 2 * np.array([[self.w_pos_f, 0], [0, self.w_vel_f]])
         hess[start:start+nx, start:start+nx] = H_last
         return hess
 
@@ -196,6 +201,29 @@ class DoubleIntegratorEnv(BaseEnv):
         )
         times_int = np.expand_dims(self.conf.dt * np.round(times / self.conf.dt), axis=1)
         return np.hstack((states, times_int))
+
+    import numpy as np
+
+    def simulate(self, state: np.ndarray, action: np.ndarray) -> np.ndarray:
+        """
+        Args:
+            state (np.ndarray): shape (3,), [p, v, t]
+            action (np.ndarray): shape (1,)
+
+        Returns:
+            np.ndarray: next state, shape (3,)
+        """
+        dt = self.conf.dt
+
+        p, v, t = state[0], state[1], state[2]
+        u = action[0]
+
+        p_next = p + v * dt
+        v_next = v + u * dt
+        t_next = t + dt
+
+        return np.array([p_next, v_next, t_next])
+
 
     def simulate_batch(self, state, action):
         """
