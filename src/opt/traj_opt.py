@@ -421,3 +421,100 @@ class TrajOpt:
                                     curr_iter, N, x_init=init_traj_states[0, :2].T)
 
         return pend_states, pend_us, curr_iter, success
+    
+
+    def solve_double_integrator_unconstrained_SQP(self, init_traj_states, init_traj_controls, display_flag=False):
+        """
+        Solve trajectory optimization for 1D double integrator using unconstrained SQP.
+
+        Args:
+            init_traj_states (np.ndarray): (N, 3) trajectory [x, v, t]
+            init_traj_controls (np.ndarray): (N-1, 1) control trajectory [u]
+            display_flag (bool): Whether to print diagnostics and plot
+
+        Returns:
+            Tuple: (states, controls, iterations, success)
+        """
+        max_iter = 20
+        stop_tol = 1e-5
+        curr_iter = 0
+        N = init_traj_states.shape[0]
+        nx, nu = self.conf.nx, self.conf.nu
+        num_vars = (N - 1) * (nx + nu) + nx
+        timesteps = init_traj_states[:, 2]
+        init_traj_states = init_traj_states[:, :2]
+        constr_viol_list  = np.empty((max_iter, 1))
+        running_cost_list = np.empty((max_iter, 1))
+        alpha_list        = np.empty((max_iter, 1))
+
+        # Create initial guess---------------------------------------------------------------------
+        x_guess = np.zeros((num_vars, 1))
+        for i in range(N - 1):
+            idx = i * (nx + nu)
+            x_guess[idx:idx + nx, 0] = init_traj_states[i]
+            x_guess[idx + nx, 0] = init_traj_controls[i, 0]
+        x_guess[-nx:, 0] = init_traj_states[-1]
+
+        lambda_guess = np.zeros((nx * N, 1))
+        f_best = np.inf
+        c_best = np.inf
+        rho = 0.5
+        KKT = np.inf
+
+        while (c_best > stop_tol or np.linalg.norm(KKT) > stop_tol or
+            abs(x_guess[-2] - self.env.goal_state[0]) >= 1e-2 or
+            abs(x_guess[-1] - self.env.goal_state[1]) >= 1e-1):
+
+            if curr_iter >= max_iter:
+                break
+
+            p_sol, H, grad_f, grad_g, g = self.env.construct_KKT_n_solve(x_guess)
+            x_guess_dir, lambda_dir = p_sol[:num_vars], p_sol[num_vars:]
+
+            # Filter line search-------------------------------------------------------------------
+            alpha = 1.0
+            while alpha >= 1e-5:
+                x_new = x_guess + alpha * x_guess_dir
+                cost_new = np.linalg.norm(self.env.running_cost(x_new))
+                constr_new = self.env.get_amnt_constr_violation(x_new)
+
+                if cost_new < f_best or constr_new < c_best:
+                    f_best = min(f_best, cost_new)
+                    c_best = min(c_best, abs(constr_new))
+                    break
+                alpha *= rho
+
+            # Update guesses-----------------------------------------------------------------------
+            x_guess = x_guess + alpha * x_guess_dir
+            lambda_guess = (1 - alpha) * lambda_guess + alpha * lambda_dir
+            KKT = grad_f.squeeze() + lambda_dir.T @ grad_g
+
+            # Record constraint violation, running cost, alpha per iteration-----------------------
+            constr_viol_list[curr_iter]  = self.env.get_amnt_constr_violation(x_guess)
+            running_cost_list[curr_iter] = np.linalg.norm(self.env.running_cost(x_guess))
+            alpha_list[curr_iter]        = alpha
+
+            if display_flag:
+                print(f"Iteration {curr_iter}: "
+                    f"Constraint Violation = {constr_viol_list[curr_iter][0]:.6f}, "
+                    f"Running Cost = {running_cost_list[curr_iter][0]:.6f}, "
+                    f"Alpha = {alpha_list[curr_iter][0]:.6f}, "
+                    f"KKT Norm = {np.linalg.norm(KKT):.6f}")
+            
+            curr_iter += 1
+
+        # Extract X and U--------------------------------------------------------------------------
+        xs = x_guess[0::3][:N]
+        vs = x_guess[1::3][:N]
+        us = x_guess[2::3]
+        states = np.zeros((N, 3))
+        states[:, 0:2] = np.hstack([xs, vs])
+        states[:, 2] = timesteps
+
+        # Check success----------------------------------------------------------------------------
+        xs = x_guess[0::3][:N]
+        final_x_err = abs(states[-1][0] - self.env.goal_state[0])
+        final_v_err = abs(states[-1][1] - self.env.goal_state[1])
+        success = final_x_err < 1e-2 and final_v_err < 1e-1 and c_best <= stop_tol
+        
+        return states, us, curr_iter, success

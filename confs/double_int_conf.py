@@ -41,8 +41,152 @@ goal_state = np.array([0.0, 0.0])                                               
 class DoubleIntegratorEnv(BaseEnv):
     def __init__(self, conf):
         super().__init__(conf)
-        self.goal_state = torch.tensor(conf.goal_state, dtype=torch.float32)
+        self.goal_state = conf.goal_state
         self.scale = conf.scale
+        self.nx, self.nu = conf.nx, conf.nu
+        self.dt = conf.dt
+        self.num_eq_constraints = 2
+
+    def running_cost(self, x):
+        nx, nu = self.nx, self.nu
+        x_g, v_g = self.goal_state
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+
+        pos = x[0::nx+nu][:N]
+        vel = x[1::nx+nu][:N]
+        u   = x[2::nx+nu][:N-1]
+
+        cost = np.sum(
+            10.0 * (pos[:-1] - x_g)**2 +
+            0.1  * (vel[:-1] - v_g)**2 +
+            0.1  * u**2
+        )
+        cost += 10.0 * (pos[-1] - x_g)**2 + 0.1 * (vel[-1] - v_g)**2
+        return cost
+
+    def grad_running_cost(self, x):
+        nx, nu = self.nx, self.nu
+        x_g, v_g = self.goal_state
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+
+        grad = np.zeros_like(x)
+        for i in range(N - 1):
+            idx = i * (nx + nu)
+            grad[idx]     = 20.0 * (x[idx] - x_g)
+            grad[idx + 1] = 0.2  * (x[idx + 1] - v_g)
+            grad[idx + 2] = 0.2  * x[idx + 2]
+        # Terminal state
+        idx = (N - 1) * (nx + nu)
+        grad[idx]     = 20.0 * (x[idx] - x_g)
+        grad[idx + 1] = 0.2  * (x[idx + 1] - v_g)
+        return grad
+
+    def hess_running_cost(self, x):
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
+        hess = np.zeros((num_vars, num_vars))
+
+        # Define the block-diagonal Hessian for each time step
+        H_i = np.array([[20,  0,  0],
+                        [ 0, .2,  0],
+                        [ 0,  0, .2]])
+        
+        # Fill the block-diagonal Hessian matrix
+        for i in range(N - 1):
+            # Place H_i into the Hessian matrix at the appropriate location
+            start = i * (nx + nu)
+            end = start + nx + nu
+            hess[start:end, start:end] = H_i
+        start = (N - 1) * (nx + nu)
+        H_last = np.array([[20, 0], [0, 0.2]])
+        hess[start:start+nx, start:start+nx] = H_last
+        return hess
+
+    def get_linearized_constraints(self, x):
+        nx, nu, dt = self.nx, self.nu, self.dt
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+
+        pos = x[0::nx+nu][:N]
+        vel = x[1::nx+nu][:N]
+        u   = x[2::nx+nu][:N-1]
+
+        g0 = np.array([[0.], [0.]]).flatten()
+        g_dyn_pos = (pos[1:] - pos[:-1] - dt * vel[:-1]).flatten()
+        g_dyn_vel = (vel[1:] - vel[:-1] - dt * u).flatten()
+
+        g_dyn = np.empty(2*(N-1))
+        g_dyn[0::2], g_dyn[1::2] = g_dyn_pos, g_dyn_vel
+        g = np.concatenate([g0, g_dyn]).reshape(-1, 1)
+        return g
+
+    def get_grad_linearized_constraints(self, x):
+        nx, nu, dt = self.nx, self.nu, self.dt
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
+
+        G = np.zeros((self.num_eq_constraints * N, num_vars))
+        I = np.eye(nx)
+
+        # Initial constraint
+        G[:nx, :nx] = I
+
+        A = np.array([
+            [1.0, dt],
+            [0.0, 1.0]
+        ])
+        B = np.array([
+            [0.0],
+            [dt]
+        ])
+
+        for i in range(1, N):
+            row_start = 2 * i
+            col_xn     = (i - 1) * (nx + nu)
+            col_un     = col_xn + nx
+            col_xnp1   = i * (nx + nu)
+
+            G[row_start:row_start+2, col_xn:col_xn+2] = A
+            G[row_start:row_start+2, col_un:col_un+1] = B
+            G[row_start:row_start+2, col_xnp1:col_xnp1+2] = -I
+
+        return G
+
+    def construct_KKT_n_solve(self, x):
+        nx, nu = self.nx, self.nu
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+        num_vars = (N - 1) * (nx + nu) + nx
+
+        grad_f = self.grad_running_cost(x)
+        H = self.hess_running_cost(x)
+        g = self.get_linearized_constraints(x)
+        grad_g = self.get_grad_linearized_constraints(x)
+
+        num_eq = grad_g.shape[0]
+
+        KKT_mat = np.zeros((num_vars + num_eq, num_vars + num_eq))
+        KKT_mat[:num_vars, :num_vars] = H
+        KKT_mat[num_vars:, :num_vars] = grad_g
+        KKT_mat[:num_vars, num_vars:] = grad_g.T
+
+        rhs = np.vstack([-grad_f, g])
+        p_sol = np.linalg.solve(KKT_mat, rhs)
+        return p_sol, H, grad_f, grad_g, g
+
+    def get_amnt_constr_violation(self, x):
+        nx, nu, dt = self.nx, self.nu, self.dt
+        N = (x.shape[0] - nx) // (nx + nu) + 1
+
+        pos = x[0::nx+nu][:N]
+        vel = x[1::nx+nu][:N]
+        u   = x[2::nx+nu][:N-1]
+
+        g = []
+        for i in range(1, N):
+            g.append(pos[i-1] + dt * vel[i-1] - pos[i])
+            g.append(vel[i-1] + dt * u[i-1] - vel[i])
+        g = np.array(g).reshape(-1, 1)
+        return np.sum(np.abs(g))
 
     def reset_batch(self, batch_size):
         times = np.random.uniform(self.conf.X_INIT_MIN[-1], self.conf.X_INIT_MAX[-1], batch_size)
@@ -93,7 +237,7 @@ class DoubleIntegratorEnv(BaseEnv):
         Reward = negative squared distance to goal + control penalty.
         state: [p, v, t]
         """
-        goal = self.goal_state.to(state.device)
+        goal = self.goal_state
         cost = 10.0 * (state[0] - goal[0])**2 + 0.1 * (state[1] - goal[1])**2
         if action is not None:
             cost += 0.01 * action[0]**2
@@ -101,7 +245,7 @@ class DoubleIntegratorEnv(BaseEnv):
         return -cost
 
     def reward_batch(self, state_batch, action_batch=None):
-        goal = self.goal_state.to(state_batch.device)
+        goal = self.goal_state
         cost = 10.0 * (state_batch[:, 0] - goal[0])**2 + 0.1 * (state_batch[:, 1] - goal[1])**2
         if action_batch is not None:
             cost += 0.01 * (action_batch[:, 0])**2
