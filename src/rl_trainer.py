@@ -113,7 +113,7 @@ class RLTrainer:
             rewards (np.ndarray): Per-step rewards (n + 1,)
         """
         n = self.conf.NSTEPS - int(states[0, -1] / self.conf.dt)
-        rewards = np.empty(n + 1)
+        rewards = np.empty(n)
         next_states = np.zeros((n, self.state_dim))
         dones = np.zeros(n)
 
@@ -121,7 +121,7 @@ class RLTrainer:
         for t in range(n-1):
             states[t + 1] = self.env.simulate(states[t], actions[t])
             rewards[t] = self.env.reward(states[t], actions[t])
-        rewards[n] = self.env.reward(states[-1])
+        rewards[-1] = self.env.reward(states[-1])
 
         # compute partial reward-to-go
         rtg = np.array([rewards[i:min(i + self.conf.NSTEPS_TD_N, n + 1)].sum()
