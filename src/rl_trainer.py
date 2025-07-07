@@ -159,6 +159,16 @@ class RLTrainer:
         print(f"Config hyper-parameters saved to {save_path}.")
 
     def create_TO_init(self, ep, init_state):
+        """
+        Create initial trajectory for the TrajOpt solver.
+        Args:
+            ep (int): Current episode number.
+            init_state (np.ndarray): Initial state with shape (state_dim,).
+        Returns:
+            states (np.ndarray): Full state trajectory (n+1, state_dim).
+            actions (np.ndarray): Full action trajectory (n, action_dim).
+            success (int): 1 if trajectory is valid, 0 otherwise.
+        """
         n = self.conf.NSTEPS - int(init_state[-1] / self.conf.dt)
         if n <= 0:
             return None, None, None, 0
@@ -177,9 +187,9 @@ class RLTrainer:
             states[i + 1] = self.env.simulate(states[i], actions[i])
 
             if np.isnan(states[i + 1]).any():
-                return None, None, None, 0
+                return None, None, 0
 
-        return init_state, states, actions, 1
+        return states, actions, 1
 
     def plot_training_curves(self):
         plt.figure(figsize=(6,4))

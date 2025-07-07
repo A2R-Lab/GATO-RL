@@ -15,7 +15,7 @@ from datetime import datetime
 # -----Sample computation function-----------------------------------------------------------------
 def compute_sample(args):
     ep, init_state, env = args
-    init_state, init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
+    init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
     if not success: return None
     TO_states, TO_controls, iters, success = trajopt.solve_double_integrator_unconstrained_SQP(init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(

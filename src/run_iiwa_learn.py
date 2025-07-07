@@ -13,7 +13,7 @@ from opt.traj_opt import TrajOpt
 # -----Sample computation function-----------------------------------------------------------------
 def compute_sample(args):
     ep, init_state, env = args
-    init_state, init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
+    init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
     if not success: return None
     TO_states, TO_controls = trajopt.solve_iiwa_unconstrained_SQP(init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(
