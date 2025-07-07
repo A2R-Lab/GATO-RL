@@ -56,7 +56,7 @@ class ActorCriticNet:
         state_norm = state_norm_no_time * mask + state_norm_time * (1 - mask)
         return state_norm.to(torch.float32)
 
-    def eval(self, NN, input):
+    def eval(self, NN, input, is_actor=False):
         if not torch.is_tensor(input):
             input = torch.tensor(np.array(input), dtype=torch.float32)
 
@@ -64,13 +64,13 @@ class ActorCriticNet:
             norm_arr = torch.tensor(self.conf.NORM_ARR, dtype=torch.float32)
             input = normalize_tensor(input, norm_arr)
 
-        action = NN(input)
+        output = NN(input)
         # Enforce action bounds
-        if getattr(self.conf, 'bound_NN_action', False):
-            action = torch.tanh(action) * self.conf.u_max
-        
-        return action
-    
+        if is_actor and getattr(self.conf, 'bound_NN_action', False):
+            output = torch.tanh(output) * self.conf.u_max
+
+        return output
+
     def compute_critic_grad(self, critic, target_critic, states, next_states,
                             partial_rtg, dones, weights):
         if self.conf.MC:
@@ -88,7 +88,7 @@ class ActorCriticNet:
         return loss.item(), full_rtg, values, self.eval(target_critic, states)
 
     def compute_actor_grad(self, actor, critic, states):
-        actions = self.eval(actor, states)
+        actions = self.eval(actor, states, is_actor=True)
         actions.requires_grad_(True)
         next_states = self.env.simulate_batch(states, actions)
 

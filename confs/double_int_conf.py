@@ -8,7 +8,7 @@ from confs.base_env import BaseEnv
 #-----TO params------------------------------------------------------------------------------------
 TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
 dt = 0.1                                                                                           # timestep
-NSTEPS = 50                                                                                        # Max trajectory length
+NSTEPS = 30                                                                                        # Max trajectory length
 X_INIT_MIN = np.array([-1.0, -1.0, 0.0])                                                           # Initial position (x), velocity (v), timestep (t)
 X_INIT_MAX = np.array([1.0, 1.0, (NSTEPS-1)*dt])                                                   # Final position (x), velocity (v), timestep (t)
 nx = 2                                                                                             # Number of state variables
@@ -36,7 +36,9 @@ scale = 1e-3                                                                    
 
 #-----Double Integrator-specific params------------------------------------------------------------
 goal_state = np.array([0.0, 0.0])                                                                  # Desired goal state (θ, w)
-
+u_min = -5.0
+u_max = 5.0
+bound_NN_action = True
 #-----Double Integrator Env & SQP Solver-----------------------------------------------------------
 class DoubleIntegratorEnv(BaseEnv):
     def __init__(self, conf):

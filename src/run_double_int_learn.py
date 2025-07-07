@@ -54,6 +54,10 @@ if __name__ == '__main__':
     log_ptr = 0
     update_step_ptr = 0
 
+    log_file_path = f"double_int/{timestamp}/buffer_log.txt"
+    os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
+    log_file = open(log_file_path, "w")
+
     # -----Episode loop----------------------------------------------------------------------------
     for ep in range(len(conf.NN_LOOPS)):
         # collect samples for TO_EPISODES episodes
@@ -67,6 +71,16 @@ if __name__ == '__main__':
         # add samples to replay buffer
         states, partial_rewards, state_nexts, dones, rewards, iters = zip(*samples)
         buffer.add(states, partial_rewards, state_nexts, dones)
+        np.set_printoptions(suppress=True)
+        for i in range(num_samples):
+            log_file.write(f"Episode {log_ptr + i}:\n")
+            log_file.write(f"States:\n{np.array(states[i])}\n")
+            log_file.write(f"Partial Rewards:\n{np.array(partial_rewards[i])}\n")
+            log_file.write(f"Next States:\n{np.array(state_nexts[i])}\n")
+            log_file.write(f"Dones:\n{np.array(dones[i])}\n")
+            log_file.write(f"Total Reward: {rewards[i]}\n")
+            log_file.write(f"SQP Iterations: {iters[i]}\n")
+            log_file.write("-" * 40 + "\n")
 
         # Update nns and record rewards
         update_step_ptr = trainer.learn_and_update(update_step_ptr, buffer, ep)
