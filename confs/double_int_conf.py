@@ -8,7 +8,7 @@ from confs.base_env import BaseEnv
 #-----TO params------------------------------------------------------------------------------------
 TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
 dt = 0.1                                                                                           # timestep
-NSTEPS = 30                                                                                        # Max trajectory length
+NSTEPS = 50                                                                                        # Max trajectory length
 X_INIT_MIN = np.array([-1.0, -1.0, 0.0])                                                           # Initial position (x), velocity (v), timestep (t)
 X_INIT_MAX = np.array([1.0, 1.0, (NSTEPS-1)*dt])                                                   # Final position (x), velocity (v), timestep (t)
 nx = 2                                                                                             # Number of state variables
@@ -46,11 +46,11 @@ class DoubleIntegratorEnv(BaseEnv):
         self.nx, self.nu = conf.nx, conf.nu
         self.dt = conf.dt
         self.num_eq_constraints = 2
-        self.w_pos = 10.0
-        self.w_vel = 0.1
+        self.w_pos = 20.0
+        self.w_vel = 2.0
         self.w_u = 0.1
-        self.w_pos_f = 10.0
-        self.w_vel_f = 0.1
+        self.w_pos_f = 20.0
+        self.w_vel_f = 2.0
 
     def running_cost(self, x):
         nx, nu = self.nx, self.nu
@@ -202,8 +202,6 @@ class DoubleIntegratorEnv(BaseEnv):
         times_int = np.expand_dims(self.conf.dt * np.round(times / self.conf.dt), axis=1)
         return np.hstack((states, times_int))
 
-    import numpy as np
-
     def simulate(self, state: np.ndarray, action: np.ndarray) -> np.ndarray:
         """
         Args:
@@ -266,16 +264,16 @@ class DoubleIntegratorEnv(BaseEnv):
         state: [p, v, t]
         """
         goal = self.goal_state
-        cost = 10.0 * (state[0] - goal[0])**2 + 0.1 * (state[1] - goal[1])**2
+        cost = self.w_pos * (state[0] - goal[0])**2 + self.w_vel * (state[1] - goal[1])**2
         if action is not None:
-            cost += 0.01 * action[0]**2
+            cost += self.w_u * action[0]**2
         cost *= self.scale
         return -cost
 
     def reward_batch(self, state_batch, action_batch=None):
         goal = self.goal_state
-        cost = 10.0 * (state_batch[:, 0] - goal[0])**2 + 0.1 * (state_batch[:, 1] - goal[1])**2
+        cost = self.w_pos * (state_batch[:, 0] - goal[0])**2 + self.w_vel * (state_batch[:, 1] - goal[1])**2
         if action_batch is not None:
-            cost += 0.01 * (action_batch[:, 0])**2
+            cost += self.w_u * (action_batch[:, 0])**2
         cost *= self.scale
         return -cost.unsqueeze(1)
