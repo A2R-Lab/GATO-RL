@@ -18,7 +18,7 @@ def compute_sample(args):
     init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
     if not success: return None
     TO_states, TO_controls, iters, success = trajopt.solve_double_integrator_unconstrained_SQP(init_states, init_controls)
-    if not success: return None
+    # if not success: return None
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(
                                                             TO_controls, TO_states)
     return RL_states, partial_rtg, next_states, done, sum(rewards), iters

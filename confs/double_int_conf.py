@@ -31,7 +31,7 @@ NORM_ARR = np.array([10,10,int(NSTEPS*dt)])                                     
 REPLAY_SIZE = 2**20                                                                                # Size of the replay buffer
 MC = 0                                                                                             # Flag to use MC or TD(n)
 UPDATE_RATE = 0.001                                                                                # Homotopy rate to update the target critic network if TD(n) is used
-NSTEPS_TD_N = int(NSTEPS/4)
+NSTEPS_TD_N = int(NSTEPS/2)
 scale = 1e-3                                                                                       # Reward function scale
 
 #-----Double Integrator-specific params------------------------------------------------------------
