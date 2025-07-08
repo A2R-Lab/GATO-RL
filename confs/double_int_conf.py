@@ -6,7 +6,7 @@ import sys
 from confs.base_env import BaseEnv
 
 #-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
+TO_EPISODES = 200                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = 0.1                                                                                           # timestep
 NSTEPS = 30                                                                                        # Max trajectory length
 X_INIT_MIN = np.array([-1.0, -1.0, 0.0])                                                           # Initial position (x), velocity (v), timestep (t)
@@ -16,8 +16,8 @@ nq = 1                                                                          
 nu = 1                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
 
 #----- NN params-----------------------------------------------------------------------------------
-NN_LOOPS = np.arange(100, 4800, 300)                                                               # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
-NN_LOOPS_TOTAL = 10000                                                                             # Max NNs updates total
+NN_LOOPS = np.arange(100, 50000, 300)                                                              # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
+NN_LOOPS_TOTAL = 100000                                                                            # Max NNs updates total
 BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
 NH1 = 64                                                                                           # 1st hidden layer size - actor
 NH2 = 64                                                                                           # 2nd hidden layer size - actor
