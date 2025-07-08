@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from siren_pytorch import Siren
-from src.utils import normalize_tensor
+from utils import normalize_tensor
 
 
 class ActorCriticNet:

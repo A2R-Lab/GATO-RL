@@ -24,8 +24,7 @@ def compute_sample(args):
 if __name__ == '__main__':
     # -----Initialization--------------------------------------------------------------------------
     # set up conf
-    PATH_TO_CONF = os.path.join(os.getcwd(), 'confs')
-    sys.path.append(PATH_TO_CONF)
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'confs'))
     conf = importlib.import_module('iiwa_conf')
 
     # initialze env, nn, buffer, TO, and rl

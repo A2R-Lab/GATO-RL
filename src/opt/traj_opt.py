@@ -6,9 +6,7 @@ from .pinocchio_template import thneed
 from scipy import sparse
 from qpsolvers import solve_qp, Problem, solve_problem
 
-# Add the confs directory to the path
-# NOTE: There should be a better way to handle this, but for now we will use this
-sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 import confs.pendulum as pendulum
 
 class TrajOpt:
