@@ -140,22 +140,31 @@ class RLTrainer:
         print(f"Models saved to {self.path}.")
 
     def save_conf(self):
+        def is_json_serializable(val):
+            try:
+                json.dumps(val)
+                return True
+            except (TypeError, OverflowError):
+                return False
+
         conf = {}
         for k, v in vars(self.conf).items():
-            if k.startswith("_"):                      # skip private / dunder
+            if k.startswith("_"):
                 continue
             if isinstance(v, (types.FunctionType, types.ModuleType)):
                 continue
             if inspect.isclass(v) or inspect.ismethod(v):
                 continue
-            if isinstance(v, np.ndarray):
+            if isinstance(v, (np.ndarray, torch.Tensor)):
                 v = v.tolist()
+            if not is_json_serializable(v):
+                continue
             conf[k] = v
 
         save_path = os.path.join(self.path, "conf.json")
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
         with open(save_path, "w") as f:
             json.dump(conf, f, indent=2)
-        
         print(f"Config hyper-parameters saved to {save_path}.")
 
     def create_TO_init(self, ep, init_state):

@@ -24,7 +24,7 @@ breg_l1_C = 1e-2                                                                
 breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
 
 #-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
+TO_EPISODES = 100                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = 0.01                                                                                          # timestep
 NSTEPS = 50                                                                                        # Max trajectory length
 X_INIT_MIN = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,                           # minimum initial state vector + time

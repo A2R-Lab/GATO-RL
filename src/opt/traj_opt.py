@@ -33,45 +33,37 @@ class TrajOpt:
                 - U (np.ndarray): Optimized control trajectory with shape (N-1, na)
         """
         # SQP solver parameters
-        qpiters = 5        # Maximum QP iterations per SQP step
-        num_iters = 100    # Maximum SQP iterations
-        dt = self.conf.dt  # Time step from configuration
-        N = init_traj_states.shape[0]  # Number of timesteps
+        qpiters = 5
+        num_iters = 100
+        dt = self.conf.dt
+        N = init_traj_states.shape[0]
         
-        # Initialize Pinocchio-based trajectory optimization template
+        # Pinocchio-based trajectory optimization template
         pyt = thneed(self.conf.URDF_PATH, N=N, dt=dt, max_qp_iters=qpiters)
 
         # Initialize optimization variables with provided initial trajectory
-        # Pack states into the optimization variable vector XU
         for i in range(N):
-            pyt.XU[i * (self.conf.nx + self.conf.nu) : i * (self.conf.nx + self.conf.nu) + self.conf.nx] = init_traj_states[i,:-1]
-        
-        # Pack controls into the optimization variable vector XU
+            pyt.XU[i * (self.conf.nx + self.conf.nu) : i * (self.conf.nx + self.conf.nu) +
+                    self.conf.nx] = init_traj_states[i,:-1]
         for i in range(N-1):
-            pyt.XU[i * (self.conf.nx + self.conf.nu) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.nu)] = init_traj_controls[i]
-
-        # Set up end-effector goal constraint
-        eepos_g = np.zeros(3 * pyt.N)  # End-effector position goals for all timesteps
-        eepos_g[-3:] = self.conf.goal_ee  # Set final timestep goal to desired end-effector position
+            pyt.XU[i * (self.conf.nx + self.conf.nu) + self.conf.nx : (i + 1) * (self.conf.nx +
+                    self.conf.nu)] = init_traj_controls[i]
+        eepos_g = np.zeros(3 * pyt.N)
+        eepos_g[-3:] = self.conf.goal_ee
         
-        # Extract initial state for warm-starting
         xs = init_traj_states[0,:-1]
         pyt.setxs(xs)
 
         # Run SQP optimization loop
         for i in range(num_iters):
-            # Perform one SQP iteration with current state and goal
             pyt.sqp(xs, eepos_g)
-            # Update current state estimate from optimization result
             xs = pyt.XU[0:self.conf.nx]
     
-        # Extract optimized trajectory from solution vector
-        # Unpack states from XU vector
-        X = np.array([pyt.XU[i * (self.conf.nx + self.conf.nu) : i * (self.conf.nx + self.conf.nu) + self.conf.nx] for i in range(N)]) 
-        # Unpack controls from XU vector
-        U = np.array([pyt.XU[i * (self.conf.nx + self.conf.nu) + self.conf.nx : (i + 1) * (self.conf.nx + self.conf.nu)] for i in range(N-1)])
-        
-        # Reconstruct timestep information and append to states
+        # Unpack states and controls from XU vector
+        X = np.array([pyt.XU[i * (self.conf.nx + self.conf.nu) : i * (self.conf.nx + self.conf.nu) + 
+                             self.conf.nx] for i in range(N)]) 
+        U = np.array([pyt.XU[i * (self.conf.nx + self.conf.nu) + self.conf.nx : (i + 1) *
+                            (self.conf.nx + self.conf.nu)] for i in range(N-1)])
         timesteps = init_traj_states[:, -1].reshape(N, 1)
         X = np.hstack((X, timesteps))
 
