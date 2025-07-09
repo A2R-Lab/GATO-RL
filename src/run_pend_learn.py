@@ -6,6 +6,8 @@ from neural_network import ActorCriticNet
 from replay_buffer import ReplayBuffer
 from rl_trainer import RLTrainer
 from opt.traj_opt import TrajOpt
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from datetime import datetime
 
@@ -17,7 +19,7 @@ def compute_sample(args):
     ep, init_state, env = args
     init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
     if not success: return None
-    TO_states, TO_controls, iters, success = trajopt.solve_pend_unconstrained_SQP(init_states, init_controls)
+    TO_states, TO_controls, iters, success = trajopt.solve_pend_constrained_SQP(init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(
                                                             TO_controls, TO_states)
     return RL_states, partial_rtg, next_states, done, sum(rewards), iters

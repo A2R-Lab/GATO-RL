@@ -31,8 +31,8 @@ pendulum.animate_robot(x_init, controls.T)
 TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
 dt = pendulum.dt                                                                                   # timestep
 NSTEPS = 500                                                                                       # Max trajectory length
-X_INIT_MIN = np.array([0.0, -10.0, 0.0])                                                           # Initial angle (θ),  angular velocity (w), timestep (t)
-X_INIT_MAX = np.array([2*np.pi, 10.0, (NSTEPS-1)//2*dt])                                           # Final angle (θ),  angular velocity (w), timestep (t)
+X_INIT_MIN = np.array([0.0, -1.0, 0.0])                                                           # Initial angle (θ),  angular velocity (w), timestep (t)
+X_INIT_MAX = np.array([np.pi, 1.0, (NSTEPS-1)*dt])                                           # Final angle (θ),  angular velocity (w), timestep (t)
 nx = 2                                                                                             # Number of state variables (7 joint positions + 7 joint velocities)
 nq = 1                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
 nu = 1                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
@@ -59,8 +59,8 @@ scale = 1e-3                                                                    
 
 #-----pendulum-specific params----------------------------------------------------------------------
 goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
-u_min = 10
-u_max = 10
+u_min = 5
+u_max = 5
 g = pendulum.g
 num_eq_constraints = 2
 
