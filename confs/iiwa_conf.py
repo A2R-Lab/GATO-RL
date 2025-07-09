@@ -24,7 +24,7 @@ breg_l1_C = 1e-2                                                                
 breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
 
 #-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 10                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
+TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
 dt = 0.01                                                                                          # timestep
 NSTEPS = 50                                                                                        # Max trajectory length
 X_INIT_MIN = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,                           # minimum initial state vector + time
@@ -72,7 +72,21 @@ class IiwaEnv(BaseEnv):
 
     def simulate(self, state, action):
         state_next = np.zeros(self.nx + 1)
-        q, v = state[:self.nq], state[self.nq:self.nx]
+        q = state[:self.nq]
+        v = state[self.nq:self.nx]
+    
+        if isinstance(q, torch.Tensor):
+            q = q.detach().cpu().numpy()
+        q = np.asarray(q, dtype=np.float64)
+
+        if isinstance(v, torch.Tensor):
+            v = v.detach().cpu().numpy()
+        v = np.asarray(v, dtype=np.float64)
+
+        if isinstance(action, torch.Tensor):
+            action = action.detach().cpu().numpy()
+        action = np.asarray(action, dtype=np.float64)
+
         qdd = pin.aba(self.conf.robot.model, self.conf.robot_data, q, v, action)
         v_new = v + qdd * self.conf.dt
         q_new = pin.integrate(self.conf.robot.model, q, v_new * self.conf.dt)
@@ -83,7 +97,18 @@ class IiwaEnv(BaseEnv):
 
     def derivative(self, state, action):
         q_init = state[:self.nq]
+        if isinstance(q_init, torch.Tensor):
+            q_init = q_init.detach().cpu().numpy()
         v_init = state[self.nq:self.nx]
+        if isinstance(v_init, torch.Tensor):
+            v_init = v_init.detach().cpu().numpy()
+        if isinstance(action, torch.Tensor):
+            action = action.detach().cpu().numpy()
+
+        q_init = np.asarray(q_init, dtype=np.float64)
+        v_init = np.asarray(v_init, dtype=np.float64)
+        action = np.asarray(action, dtype=np.float64)
+
         pin.computeABADerivatives(
             self.conf.robot.model, self.conf.robot.data,
             np.copy(q_init).astype(np.float32),

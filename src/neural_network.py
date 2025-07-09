@@ -91,6 +91,8 @@ class ActorCriticNet:
         actions = self.eval(actor, states, is_actor=True)
         actions.requires_grad_(True)
         next_states = self.env.simulate_batch(states, actions)
+        if not next_states.requires_grad:
+            next_states.requires_grad_(True)
 
         # ds'/da
         ds_next_da = self.env.derivative_batch(states, actions)
