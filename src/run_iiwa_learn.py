@@ -18,7 +18,7 @@ def compute_sample(args):
     if not success: return None
     TO_states, TO_controls = trajopt.solve_iiwa_unconstrained_SQP(init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(TO_controls, TO_states)
-    if sum(rewards) < -1e3:  # Filter out poor samples
+    if np.isnan(partial_rtg).any() or sum(rewards) < -1e3:  # Filter out poor samples
         print(f"Sample {ep} discarded due to low reward: {sum(rewards): .3f}")
         return None
     return RL_states, partial_rtg, next_states, done, sum(rewards)

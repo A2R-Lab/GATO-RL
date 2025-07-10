@@ -6,8 +6,8 @@ import pinocchio as pin
 from base_env import BaseEnv
 
 #----- NN params-----------------------------------------------------------------------------------
-NN_LOOPS = np.arange(1000, 48000, 3000)                                                            # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
-NN_LOOPS_TOTAL = 100000                                                                            # Max NNs updates total
+NN_LOOPS = np.arange(1000, 500000, 3000)                                                            # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
+NN_LOOPS_TOTAL = 500000                                                                            # Max NNs updates total
 BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
 NH1 = 256                                                                                          # 1st hidden layer size - actor
 NH2 = 256                                                                                          # 2nd hidden layer size - actor
@@ -22,18 +22,31 @@ kreg_l1_C = 1e-2                                                                
 kreg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - kernel
 breg_l1_C = 1e-2                                                                                   # Weight of L1 regularization in critic's network - bias
 breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
+bound_NN_action = True                                                                             # Flag to bound the action output by the NN
 
-#-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 100                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
-dt = 0.01                                                                                          # timestep
-NSTEPS = 50                                                                                        # Max trajectory length
-X_INIT_MIN = np.array([-2.967,-2.094,-2.967,-2.094,-2.967,-2.094,-3.054,                           # minimum initial state vector + time
-                    1.57,1.57,1.57,1.57,1.57,1.57,1.57,0])
-X_INIT_MAX = np.array([2.967,2.094,2.967,2.094,2.967,2.094,3.054,                                  # maximum initial state vector + time
-                    1.57,1.57,1.57,1.57,1.57,1.57,1.57,(NSTEPS-1)*dt])
+#-----IIWA-specific params-------------------------------------------------------------------------
+URDF_PATH = os.path.abspath(os.path.join('confs', 'iiwa.urdf'))
+robot = RobotWrapper.BuildFromURDF(URDF_PATH, package_dirs=[os.path.dirname(URDF_PATH)])
+robot_data = robot.model.createData()
+end_effector_frame_id = 'iiwa_link_7'
+q_neutral = pin.neutral(robot.model)
+pin.forwardKinematics(robot.model, robot_data, q_neutral)
+pin.updateFramePlacements(robot.model, robot_data)
+eef_frame_id = robot.model.getFrameId(end_effector_frame_id)
+goal_ee = robot_data.oMf[eef_frame_id].translation
 nx = 14                                                                                            # Number of state variables (7 joint positions + 7 joint velocities)
 nq = 7                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
 nu = 7                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
+nv = 7                                                                                             # Number of joint velocities (KUKA IIWA has 7 joints)
+u_min = 5
+u_max = 5
+
+#-----TO params------------------------------------------------------------------------------------
+TO_EPISODES = 200                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
+dt = 0.01                                                                                          # timestep
+NSTEPS = 30                                                                                        # Max trajectory length
+X_INIT_MIN = np.concatenate([q_neutral - 0.1, -0.1*np.ones(nv), [0.0]])
+X_INIT_MAX = np.concatenate([q_neutral + 0.1,  0.1*np.ones(nv), [(NSTEPS-1)*dt]])
 
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
@@ -42,13 +55,6 @@ UPDATE_RATE = 0.001                                                             
 NSTEPS_TD_N = int(NSTEPS/4)  
 NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
 NORM_ARR = np.array([10,10,10,10,10,10,10,10,10,10,10,10,10,10, int(NSTEPS*dt)])                   # Array of values to normalize by
-
-#-----IIWA-specific params-------------------------------------------------------------------------
-URDF_PATH = os.path.abspath(os.path.join('confs', 'iiwa.urdf'))
-robot = RobotWrapper.BuildFromURDF(URDF_PATH, package_dirs=[os.path.dirname(URDF_PATH)])
-robot_data = robot.model.createData()
-end_effector_frame_id = 'iiwa_link_7'
-goal_ee = [0.5, 0.5, 0.5]
 
 #-----env functions--------------------------------------------------------------------------------
 class IiwaEnv(BaseEnv):
