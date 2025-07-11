@@ -39,7 +39,7 @@ class RLTrainer:
         self.critic_optimizer = torch.optim.Adam(
             self.critic_model.parameters(), lr=self.conf.CRITIC_LEARNING_RATE, eps=1e-7)
         self.target_critic.load_state_dict(self.critic_model.state_dict())   
-
+    
     def update(self, states, next_states, partial_rtg, dones, weights):
         '''
         Update both actor and critic networks
@@ -50,12 +50,14 @@ class RLTrainer:
             self.critic_model, self.target_critic,
             states, next_states, partial_rtg, dones, weights
         )
+        torch.nn.utils.clip_grad_norm_(self.critic_model.parameters(), max_norm=1.0)
         self.critic_optimizer.step()
         self.critic_loss_log.append(critic_loss)
 
         # update actor
         self.actor_optimizer.zero_grad()
         actor_loss = self.NN.compute_actor_grad(self.actor_model, self.critic_model, states)
+        torch.nn.utils.clip_grad_norm_(self.actor_model.parameters(), max_norm=1.0)
         self.actor_optimizer.step()
         self.actor_loss_log.append(actor_loss)
 

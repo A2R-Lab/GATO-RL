@@ -13,6 +13,7 @@ dependencies:
   - mujoco
   - ipython
   - cvxopt
+  - seaborn
   - pip:
       - siren_pytorch
       - pin

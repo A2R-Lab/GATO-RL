@@ -1,43 +1,21 @@
 import numpy as np
 import pinocchio as pin
-from pinocchio.robot_wrapper import RobotWrapper
 import sys
 import importlib
 import time
 import os
-
 import mujoco
 import mujoco.viewer
 from robot_descriptions.loaders.mujoco import load_robot_description
 
 def test_iiwa_TO():
     # Add the src directory to the path
-    # NOTE: There should be a better way to handle this, but for now we will use this
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
     from opt.traj_opt import TrajOpt
     from rl_trainer import RLTrainer
 
     PATH_TO_CONF = os.path.join(os.getcwd(), 'confs')
     sys.path.append(PATH_TO_CONF)
-
-    # # Load the KUKA iiwa model (you can replace this with your own URDF)
-    # URDF_PATH = os.path.join(os.getcwd(), 'confs/iiwa.urdf')
-    # robot = RobotWrapper.BuildFromURDF(URDF_PATH, [URDF_PATH])
-    # model = robot.model
-    # data = model.createData()
-
-    # Get number of joints
-    # nq = model.nq  # Position state size
-    # nv = model.nv  # Velocity state size
-
-    # # Define initial state
-    # q = pin.neutral(model)  # Neutral joint positions
-    # v = np.zeros(nv)        # Zero initial velocity
-    # tau = np.random.uniform(-5, 5, nv)  # Random torque input
-
-    # # Print results
-    # print("Initial joint positions:", q)
-
     conf = importlib.import_module('iiwa_conf')
     env = getattr(conf, 'IiwaEnv')(conf)
 
@@ -45,23 +23,17 @@ def test_iiwa_TO():
     T = conf.NSTEPS
     trainer = RLTrainer(env, TO_inst, conf, N_try=0)
 
-    # KUKA IIWA has 7 joints, so:
-    # - State dimension: 14 (7 positions + 7 velocities) 
-    # - Control dimension: 7 (one torque per joint)
-    # ICS_state = np.random.rand(14)  # Random initial state (14 elements: 7 positions + 7 velocities)
-    # init_TO_states = np.random.rand(T+1, conf.nx+1)  # Random initial trajectory states (14 state + 1 timestep)
-    # init_TO_controls = np.random.rand(T, conf.nu)    # Random initial trajectory controls (7 torques) (na=nu=number of controls)
-
-    # print(init_TO_controls.shape)
-    # print(init_TO_states.shape)
-
     # Initialize and test the TO_solve method
     TO_inst = TrajOpt(env, conf)
-    init_states = env.reset_batch(batch_size=100)
+    init_states = env.reset_batch(batch_size=10)
     init_traj_states = np.zeros((len(init_states), T + 1, conf.nx))
     success_count = 0
     for i in range(len(init_states)):
-        init_traj_states, init_traj_controls, _ = trainer.create_TO_init(0, init_states[i])
+        init_traj_states, init_traj_controls, success = trainer.create_TO_init(0, init_states[i])
+        if not success:
+            print(f"Failed to create TO init for state {i}")
+            continue
+            
         traj_states, traj_controls = TO_inst.solve_iiwa_unconstrained_SQP(
             init_traj_states, init_traj_controls
         )
@@ -74,14 +46,7 @@ def test_iiwa_TO():
             success_count += 1
 
     print(f"Total successful trajectories: {success_count}/{len(init_states)}")
-
-    # traj_states, traj_controls = TO_inst.solve_iiwa_unconstrained_SQP(init_TO_states, init_TO_controls)
-
-    # # Print results for inspection
-    # print("traj controls:\n", traj_controls.shape)
-    # print("traj states:\n", traj_states.shape)
-
-    # return traj_states, traj_controls
+    return traj_states, traj_controls
 
 
 def viz_iiwa_traj(x: np.ndarray, _u: np.ndarray):
@@ -124,7 +89,7 @@ def viz_iiwa_traj(x: np.ndarray, _u: np.ndarray):
                 mujoco.mj_step(model, data)
                 viewer.sync()
                 time.sleep(0.03)  # ~30 FPS, increase for slower animation
-                
+            
         print("Animation finished. Press Enter to replay or 'q' to quit.")
         user_input = input()
         if user_input.strip().lower() == 'q':
@@ -133,4 +98,4 @@ def viz_iiwa_traj(x: np.ndarray, _u: np.ndarray):
 
 if __name__ == "__main__":
     traj_states, traj_controls = test_iiwa_TO()   # your optimiser
-    # viz_iiwa_traj(traj_states, traj_controls)  # your visualiser
+    viz_iiwa_traj(traj_states, traj_controls)  # your visualiser

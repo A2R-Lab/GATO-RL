@@ -36,17 +36,25 @@ eef_frame_id = robot.model.getFrameId(end_effector_frame_id)
 goal_ee = robot_data.oMf[eef_frame_id].translation
 nx = 14                                                                                            # Number of state variables (7 joint positions + 7 joint velocities)
 nq = 7                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
-nu = 7                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
+nu = 7                                                                                             # Number of actions (controls (torques for each joint))
 nv = 7                                                                                             # Number of joint velocities (KUKA IIWA has 7 joints)
-u_min = 5
-u_max = 5
+X_MIN = np.zeros(nx)
+X_MAX = np.zeros(nx)
+for joint in robot.model.joints[1:]:
+    q_idx = joint.idx_q
+    v_idx = joint.idx_v
+    X_MIN[q_idx] = robot.model.lowerPositionLimit[q_idx]
+    X_MAX[q_idx] = robot.model.upperPositionLimit[q_idx]
+    X_MIN[nq + v_idx] = -robot.model.velocityLimit[v_idx]
+    X_MAX[nq + v_idx] =  robot.model.velocityLimit[v_idx]
 
 #-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 200                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
+TO_EPISODES = 100                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = 0.01                                                                                          # timestep
-NSTEPS = 30                                                                                        # Max trajectory length
-X_INIT_MIN = np.concatenate([q_neutral - 0.1, -0.1*np.ones(nv), [0.0]])
-X_INIT_MAX = np.concatenate([q_neutral + 0.1,  0.1*np.ones(nv), [(NSTEPS-1)*dt]])
+NSTEPS = 100                                                                                       # Max trajectory length
+
+X_INIT_MIN = np.concatenate([X_MIN/2, [0.0]])
+X_INIT_MAX = np.concatenate([X_MAX/4, [(NSTEPS-1)*dt]])
 
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
