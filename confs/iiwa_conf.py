@@ -3,10 +3,10 @@ from pinocchio.robot_wrapper import RobotWrapper
 import torch
 import os
 import pinocchio as pin
-from base_env import BaseEnv
+from confs.base_env import BaseEnv
 
 #----- NN params-----------------------------------------------------------------------------------
-NN_LOOPS = np.arange(1000, 500000, 3000)                                                            # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
+NN_LOOPS = np.arange(5000, 500000, 1000)                                                           # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
 NN_LOOPS_TOTAL = 500000                                                                            # Max NNs updates total
 BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
 NH1 = 256                                                                                          # 1st hidden layer size - actor
@@ -22,10 +22,11 @@ kreg_l1_C = 1e-2                                                                
 kreg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - kernel
 breg_l1_C = 1e-2                                                                                   # Weight of L1 regularization in critic's network - bias
 breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
-bound_NN_action = True                                                                             # Flag to bound the action output by the NN
+bound_NN_action = False                                                                            # Flag to bound the action output by the NN
+u_max = 2.5                                                                                        # Max action value
 
 #-----IIWA-specific params-------------------------------------------------------------------------
-URDF_PATH = os.path.abspath(os.path.join('confs', 'iiwa.urdf'))
+URDF_PATH = os.path.join(os.path.dirname(__file__), 'iiwa.urdf')
 robot = RobotWrapper.BuildFromURDF(URDF_PATH, package_dirs=[os.path.dirname(URDF_PATH)])
 robot_data = robot.model.createData()
 end_effector_frame_id = 'iiwa_link_7'
@@ -52,9 +53,8 @@ for joint in robot.model.joints[1:]:
 TO_EPISODES = 100                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = 0.01                                                                                          # timestep
 NSTEPS = 100                                                                                       # Max trajectory length
-
-X_INIT_MIN = np.concatenate([X_MIN/2, [0.0]])
-X_INIT_MAX = np.concatenate([X_MAX/4, [(NSTEPS-1)*dt]])
+X_INIT_MIN = np.concatenate([X_MIN, [0.0]])
+X_INIT_MAX = np.concatenate([X_MAX, [(NSTEPS-1)*dt]])
 
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
@@ -72,6 +72,10 @@ class IiwaEnv(BaseEnv):
         self.nq = conf.nq
         self.nu = conf.nu
         self.goal_ee = conf.goal_ee
+        self.q_max = conf.X_MAX[:self.nq]
+        self.q_min = conf.X_MIN[:self.nq]
+        self.v_max = conf.X_MAX[self.nq:self.nx]
+        self.v_min = conf.X_MIN[self.nq:self.nx]
 
     def reset_batch(self, batch_size):
         # NOTE: since the state vector has the time as the last element,
@@ -104,6 +108,9 @@ class IiwaEnv(BaseEnv):
         qdd = pin.aba(self.conf.robot.model, self.conf.robot_data, q, v, action)
         v_new = v + qdd * self.conf.dt
         q_new = pin.integrate(self.conf.robot.model, q, v_new * self.conf.dt)
+
+        q_new = np.clip(q_new, self.q_min, self.q_max)
+        v_new = np.clip(v_new, self.v_min, self.v_max)
 
         state_next[:self.nq], state_next[self.nq:self.nx] = np.copy(q_new), np.copy(v_new)
         state_next[-1] = state[-1] + self.conf.dt
