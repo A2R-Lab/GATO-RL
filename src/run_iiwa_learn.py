@@ -10,12 +10,15 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from datetime import datetime
+import multiprocessing as mp
 
 # -----Sample computation function-----------------------------------------------------------------
 def compute_sample(args):
-    ep, init_state, env = args
+    ep, init_state = args
     init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
-    if not success: return None
+    if not success:
+        print(f"Failed to create TO init for episode {ep}")
+        return None
     TO_states, TO_controls = trajopt.solve_iiwa_unconstrained_SQP(init_states, init_controls)
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(TO_controls, TO_states)
     if np.isnan(partial_rtg).any() or sum(rewards) < -1e3:  # Filter out poor samples
@@ -55,7 +58,9 @@ if __name__ == '__main__':
     for ep in range(len(conf.NN_LOOPS)):
         print("Collecting samples...")
         init_rand_state = env.reset_batch(conf.TO_EPISODES)
-        samples = [compute_sample((ep, init_rand_state[i, :], env)) for i in range(conf.TO_EPISODES)]
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            args = [(ep, init_rand_state[i, :]) for i in range(conf.TO_EPISODES)]
+            samples = pool.map(compute_sample, args)
         samples = [s for s in samples if s]
         num_samples = len(samples)
         print(f"{num_samples}/{conf.TO_EPISODES} samples collected.")
