@@ -193,7 +193,7 @@ class RLTrainer:
                 actions[i] = np.zeros(self.conf.nu)
             else:
                 state_tensor = torch.tensor(states[i][None], dtype=torch.float32)
-                actions[i] = self.NN.eval(self.actor_model, state_tensor)\
+                actions[i] = self.NN.eval(self.actor_model, state_tensor, is_actor=True)\
                                 .squeeze().cpu().detach().numpy()
             states[i + 1] = self.env.simulate(states[i], actions[i])
 
