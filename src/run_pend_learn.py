@@ -10,16 +10,22 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from datetime import datetime
+import multiprocessing as mp
 
 # NOTE: Currently broken from refactoring, will come fix this after getting the 
 # pendulum case to work (and we can actually visualize and verify the pendulum case)!
 
 # -----Sample computation function-----------------------------------------------------------------
 def compute_sample(args):
-    ep, init_state, env = args
+    ep, init_state = args
     init_states, init_controls, success = trainer.create_TO_init(ep, init_state)
-    if not success: return None
+    if not success: 
+        print(f"Failed to create TO init for episode {ep} with init state {init_state}")
+        return None
     TO_states, TO_controls, iters, success = trajopt.solve_pend_constrained_SQP(init_states, init_controls)
+    # if not success:
+    #     print(f"Failed to solve TO for episode {ep} with init state {init_state}")
+    #     return None
     RL_states, partial_rtg, next_states, done, rewards = trainer.compute_partial_rtg(
                                                             TO_controls, TO_states)
     return RL_states, partial_rtg, next_states, done, sum(rewards), iters
@@ -59,7 +65,9 @@ if __name__ == '__main__':
         # collect samples for TO_EPISODES episodes
         print("Collecting samples...")
         init_rand_state = env.reset_batch(conf.TO_EPISODES)
-        samples = [compute_sample((ep, init_rand_state[i, :], env)) for i in range(conf.TO_EPISODES)]
+        with mp.Pool(processes=mp.cpu_count()) as pool:
+            args = [(ep, init_rand_state[i, :]) for i in range(conf.TO_EPISODES)]
+            samples = pool.map(compute_sample, args)
         samples = [sample for sample in samples if sample]
         num_samples = len(samples)
         print(f"{num_samples}/{conf.TO_EPISODES} samples collected.")
