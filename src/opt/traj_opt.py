@@ -160,7 +160,7 @@ class TrajOpt:
         """
 
         # Initialize params
-        max_iter = int(100) # Max number of iterations of SQP (NOT timestep of the problem)
+        max_iter = 20
         stop_tol = 1e-5
         curr_iter = 0
         N = init_traj_states.shape[0]
