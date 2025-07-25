@@ -13,15 +13,7 @@ NH1 = 256                                                                       
 NH2 = 256                                                                                          # 2nd hidden layer size - actor
 NN_PATH = 'iiwa'                                                                                   # Path to save the .pth files for actor and critic
 CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
-ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
-kreg_l1_A = 1e-2                                                                                   # Weight of L1 regularization in actor's network - kernel
-kreg_l2_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - kernel
-breg_l1_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - bias
-breg_l2_A = 1e-2                                                                                   # Weight of L2 regularization in actor's network - bias
-kreg_l1_C = 1e-2                                                                                   # Weight of L1 regularization in critic's network - kernel
-kreg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - kernel
-breg_l1_C = 1e-2                                                                                   # Weight of L1 regularization in critic's network - bias
-breg_l2_C = 1e-2                                                                                   # Weight of L2 regularization in critic's network - bias
+ACTOR_LEARNING_RATE = 1e-4                                                                         # Learning rate for the policy network
 bound_NN_action = False                                                                            # Flag to bound the action output by the NN
 u_max = 2.5                                                                                        # Max action value
 
@@ -52,9 +44,9 @@ for joint in robot.model.joints[1:]:
 #-----TO params------------------------------------------------------------------------------------
 TO_EPISODES = 100                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = 0.01                                                                                          # timestep
-NSTEPS = 100                                                                                       # Max trajectory length
-X_INIT_MIN = np.concatenate([X_MIN, [0.0]])
-X_INIT_MAX = np.concatenate([X_MAX, [(NSTEPS-1)*dt]])
+NSTEPS = 32                                                                                        # Max trajectory length
+X_INIT_MIN = np.concatenate([X_MIN/4, [0.0]])
+X_INIT_MAX = np.concatenate([X_MAX/8, [(NSTEPS-1)*dt]])
 
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**16                                                                                # Size of the replay buffer
@@ -108,9 +100,6 @@ class IiwaEnv(BaseEnv):
         qdd = pin.aba(self.conf.robot.model, self.conf.robot_data, q, v, action)
         v_new = v + qdd * self.conf.dt
         q_new = pin.integrate(self.conf.robot.model, q, v_new * self.conf.dt)
-
-        q_new = np.clip(q_new, self.q_min, self.q_max)
-        v_new = np.clip(v_new, self.v_min, self.v_max)
 
         state_next[:self.nq], state_next[self.nq:self.nx] = np.copy(q_new), np.copy(v_new)
         state_next[-1] = state[-1] + self.conf.dt
@@ -168,7 +157,7 @@ class IiwaEnv(BaseEnv):
 
     def reward(self, state, action=None):
         # NOTE: QD is velocity cost, we (maybe) should change the notation to dQ for readability.
-        QD_cost, R_cost = 0.0001, 0.0001
+        QD_cost, R_cost = 0.01, 1e-5
         total_cost = -0.5 * QD_cost * np.sum(state[self.nx // 2:] ** 2)
         total_cost += -0.5 * np.sum((self.ee(state) - self.goal_ee) ** 2)
         if action is not None:
@@ -176,7 +165,7 @@ class IiwaEnv(BaseEnv):
         return total_cost
 
     def reward_batch(self, state_batch, action_batch=None):
-        QD_cost, R_cost = 0.0001, 0.0001
+        QD_cost, R_cost = 0.01, 1e-5
         total_cost = -0.5 * QD_cost * torch.sum(state_batch[:, self.nx // 2:] ** 2, dim=1)
         ee_pos = self.ee_batch(state_batch) # find the end-effector position for each state in the batch
         target = torch.tensor(self.goal_ee, dtype=ee_pos.dtype, device=ee_pos.device)
