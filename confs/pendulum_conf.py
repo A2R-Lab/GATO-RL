@@ -28,18 +28,21 @@ x_init = np.array([[1.0], [0.0]])  # Initial state (angle, angular velocity)
 pendulum.animate_robot(x_init, controls.T)
 """
 #-----TO params------------------------------------------------------------------------------------
-TO_EPISODES = 50                                                                                   # Number of episodes solving TO/computing reward before updating critic and actor
+TO_EPISODES = 100                                                                                  # Number of episodes solving TO/computing reward before updating critic and actor
 dt = pendulum.dt                                                                                   # timestep
-NSTEPS = 500                                                                                       # Max trajectory length
-X_INIT_MIN = np.array([0.0, -1.0, 0.0])                                                           # Initial angle (θ),  angular velocity (w), timestep (t)
-X_INIT_MAX = np.array([np.pi, 1.0, (NSTEPS-1)*dt])                                           # Final angle (θ),  angular velocity (w), timestep (t)
+NSTEPS = 300                                                                                       # Max trajectory length
+goal_state = np.array([np.pi, 0.])                                                                 # Desired goal state (θ, w)
+u_min = 5
+u_max = 5                                                                                          # Control input bounds (torque)
+X_INIT_MIN = np.array([0., -5., 0.])                                                               # Initial angle (θ),  angular velocity (w), timestep (t)
+X_INIT_MAX = np.array([2*np.pi, +5., (NSTEPS-1)*dt])                                               # Final angle (θ),  angular velocity (w), timestep (t)
 nx = 2                                                                                             # Number of state variables (7 joint positions + 7 joint velocities)
 nq = 1                                                                                             # Number of joint positions (KUKA IIWA has 7 joints)
 nu = 1                                                                                             # Number of actions (controls (torques for each joint)), other conventions use nu
 
 #----- NN params-----------------------------------------------------------------------------------
-NN_LOOPS = np.arange(100, 4800, 300)                                                               # Number of updates K of critic and actor performed every TO_EPISODES                                                                              
-NN_LOOPS_TOTAL = 10000                                                                             # Max NNs updates total
+NN_LOOPS = np.arange(1000, 500000, 1000)                                                           # Number of updates K of critic and actor performed every TO_EPISODES
+NN_LOOPS_TOTAL = 1000000                                                                           # Max NNs updates total
 BATCH_SIZE = 128                                                                                   # Num. of transitions sampled from buffer for each NN update
 NH1 = 64                                                                                           # 1st hidden layer size - actor
 NH2 = 64                                                                                           # 2nd hidden layer size - actor
@@ -57,13 +60,6 @@ UPDATE_RATE = 0.001                                                             
 NSTEPS_TD_N = int(NSTEPS/4)
 scale = 1e-3                                                                                       # Reward function scale
 
-#-----pendulum-specific params----------------------------------------------------------------------
-goal_state = np.array([np.pi, 0.0])                                                                 # Desired goal state (θ, w)
-u_min = 5
-u_max = 5
-g = pendulum.g
-num_eq_constraints = 2
-
 #-----Pendulum Env & SQP Solver--------------------------------------------------------------------
 class PendulumEnv(BaseEnv):
     def __init__(self, conf, N_ts=NSTEPS, u_min=u_min, u_max=u_max):
@@ -73,14 +69,14 @@ class PendulumEnv(BaseEnv):
         super().__init__(conf)
         self.conf = conf
         self.dt = dt                                                                                # Time step for the simulation
-        self.g = g                                                                                  # gravity
+        self.g = pendulum.g                                                                         # gravity
         self.N = N_ts                                                                               # Number of time steps
         self.nq = nq                                                                                # Number of joints (1 for pendulum)
         self.nx = nx                                                                                # Number of state variables (1 joint position + 1 joint velocity)
         self.nu = nu                                                                                # Number of actuators (1 for pendulum torque)
         self.goal_state = goal_state                                                                # Target state (pendulum upright position)
         self.num_vars = (self.N) * (nx + nu)                                                        # Total number of variables in trajectory
-        self.num_eq_constraints = num_eq_constraints                                                # Number of equality constraints
+        self.num_eq_constraints = 2                                                                 # Number of equality constraints
         self.u_min = u_min                                                                          # min control
         self.u_max = u_max                                                                          # max control
         self.scale = scale
@@ -451,7 +447,7 @@ class PendulumEnv(BaseEnv):
         Returns:
             np.ndarray: Next state with shape (3,) [θ_{t+1}, θ̇_{t+1}, t+1]
         """
-        theta_next = (state[0] + self.dt * state[1]) % (2 * np.pi)
+        theta_next = (state[0] + self.dt * state[1])
         theta_dot_next = state[1] + self.dt * (action[0] - self.g * np.sin(state[0]))
         t_next = state[2] + self.dt
         return np.array([theta_next, theta_dot_next, t_next])
@@ -473,7 +469,7 @@ class PendulumEnv(BaseEnv):
         theta, theta_dot, t = state[:, 0], state[:, 1], state[:, 2]
         u = action[:, 0]
 
-        theta_next = (theta + self.dt * theta_dot ) % (2 * np.pi)
+        theta_next = (theta + self.dt * theta_dot)
         theta_dot_next = theta_dot + self.dt * (u - self.g * torch.sin(theta))
         t_next = t + self.dt
         return torch.stack([theta_next, theta_dot_next, t_next], dim=1)
