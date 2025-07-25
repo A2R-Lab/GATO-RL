@@ -16,29 +16,47 @@ class ActorCriticNet:
     def create_actor(self):
         model = nn.Sequential(
             nn.Linear(self.state_dim, self.conf.NH1),
-            nn.LeakyReLU(negative_slope=0.3),
+            nn.LayerNorm(self.conf.NH1),
+            nn.Mish(),
             nn.Linear(self.conf.NH1, self.conf.NH2),
-            nn.LeakyReLU(negative_slope=0.3),
+            nn.LayerNorm(self.conf.NH2),
+            nn.Mish(),
             nn.Linear(self.conf.NH2, self.conf.nu)
         )
 
         for layer in model:
             if isinstance(layer, nn.Linear):
-                nn.init.xavier_uniform_(layer.weight)
+                nn.init.kaiming_uniform_(layer.weight, nonlinearity='leaky_relu')
                 nn.init.constant_(layer.bias, 0)
         return model.to(torch.float32)
 
     def create_critic_sine(self):
         model = nn.Sequential(
-            Siren(self.state_dim, 64),
-            Siren(64, 64),
-            Siren(64, 128),
-            Siren(128, 128),
+            nn.Linear(self.state_dim, 64),
+            nn.LayerNorm(64),
+            nn.Mish(),
+            
+            nn.Linear(64, 64),
+            nn.LayerNorm(64),
+            nn.Mish(),
+            
+            nn.Linear(64, 128),
+            nn.LayerNorm(128),
+            nn.Mish(),
+            
+            nn.Linear(128, 128),
+            nn.LayerNorm(128),
+            nn.Mish(),
+            
             nn.Linear(128, 1)
         )
 
-        nn.init.xavier_uniform_(model[-1].weight)
-        nn.init.constant_(model[-1].bias, 0)
+        # Weight init
+        for layer in model:
+            if isinstance(layer, nn.Linear):
+                nn.init.kaiming_uniform_(layer.weight, nonlinearity='leaky_relu')
+                nn.init.constant_(layer.bias, 0)
+
         return model.to(torch.float32)
 
     def normalize_tensor(state, state_norm_arr):
