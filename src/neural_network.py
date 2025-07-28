@@ -17,10 +17,10 @@ class ActorCriticNet:
         model = nn.Sequential(
             nn.Linear(self.state_dim, self.conf.NH1),
             nn.LayerNorm(self.conf.NH1),
-            nn.Mish(),
+            nn.LeakyReLU(negative_slope=0.1),
             nn.Linear(self.conf.NH1, self.conf.NH2),
             nn.LayerNorm(self.conf.NH2),
-            nn.Mish(),
+            nn.LeakyReLU(negative_slope=0.1),
             nn.Linear(self.conf.NH2, self.conf.nu)
         )
 
@@ -30,24 +30,24 @@ class ActorCriticNet:
                 nn.init.constant_(layer.bias, 0)
         return model.to(torch.float32)
 
-    def create_critic_sine(self):
+    def create_critic(self):
         model = nn.Sequential(
             nn.Linear(self.state_dim, 64),
             nn.LayerNorm(64),
-            nn.Mish(),
-            
+            nn.LeakyReLU(negative_slope=0.1),
+
             nn.Linear(64, 64),
             nn.LayerNorm(64),
-            nn.Mish(),
-            
+            nn.LeakyReLU(negative_slope=0.1),
+
             nn.Linear(64, 128),
             nn.LayerNorm(128),
-            nn.Mish(),
-            
+            nn.LeakyReLU(negative_slope=0.1),
+
             nn.Linear(128, 128),
             nn.LayerNorm(128),
-            nn.Mish(),
-            
+            nn.LeakyReLU(negative_slope=0.1),
+
             nn.Linear(128, 1)
         )
 

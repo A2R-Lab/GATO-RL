@@ -26,6 +26,8 @@ CRITIC_LEARNING_RATE = 5e-4                                                     
 ACTOR_LEARNING_RATE = 1e-3                                                                         # Learning rate for the policy network
 NORMALIZE_INPUTS = 0                                                                               # Flag to normalize inputs (state)
 NORM_ARR = np.array([10,10,int(NSTEPS*dt)])                                                        # Array of values to normalize by
+MAX_NORM_A = 1.0                                                                                   # Maximum norm of gradient for actor
+MAX_NORM_C = 1.0                                                                                   # Maximum norm of gradient for critic
 
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**20                                                                                # Size of the replay buffer
@@ -39,6 +41,7 @@ goal_state = np.array([0.0, 0.0])                                               
 u_min = -5.0
 u_max = 5.0
 bound_NN_action = True
+
 #-----Double Integrator Env & SQP Solver-----------------------------------------------------------
 class DoubleIntegratorEnv(BaseEnv):
     def __init__(self, conf):

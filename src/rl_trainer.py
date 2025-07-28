@@ -31,8 +31,8 @@ class RLTrainer:
     def setup_model(self):
         # Create actor, critic and target NNs
         self.actor_model = self.NN.create_actor()
-        self.critic_model = self.NN.create_critic_sine()
-        self.target_critic = self.NN.create_critic_sine()
+        self.critic_model = self.NN.create_critic()
+        self.target_critic = self.NN.create_critic()
 
         self.actor_optimizer = torch.optim.Adam(
             self.actor_model.parameters(), lr=self.conf.ACTOR_LEARNING_RATE, eps=1e-7)
@@ -50,14 +50,14 @@ class RLTrainer:
             self.critic_model, self.target_critic,
             states, next_states, partial_rtg, dones, weights
         )
-        torch.nn.utils.clip_grad_norm_(self.critic_model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(self.critic_model.parameters(), max_norm=self.conf.MAX_NORM_A)
         self.critic_optimizer.step()
         self.critic_loss_log.append(critic_loss)
 
         # update actor
         self.actor_optimizer.zero_grad()
         actor_loss = self.NN.compute_actor_grad(self.actor_model, self.critic_model, states)
-        torch.nn.utils.clip_grad_norm_(self.actor_model.parameters(), max_norm=1.0)
+        torch.nn.utils.clip_grad_norm_(self.actor_model.parameters(), max_norm=self.conf.MAX_NORM_C)
         self.actor_optimizer.step()
         self.actor_loss_log.append(actor_loss)
 
@@ -204,8 +204,8 @@ class RLTrainer:
 
     def plot_training_curves(self):
         plt.figure(figsize=(6,4))
-        plt.plot(self.critic_loss_log, label="Critic loss")
-        plt.plot(self.actor_loss_log,  label="Actor loss")
+        plt.plot(self.critic_loss_log, label="Critic loss", alpha=0.7)
+        plt.plot(self.actor_loss_log,  label="Actor loss", alpha=0.7)
         plt.xlabel("Gradient update step")
         plt.ylabel("Loss")
         plt.grid(True)

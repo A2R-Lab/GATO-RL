@@ -15,7 +15,8 @@ NN_PATH = 'iiwa'                                                                
 CRITIC_LEARNING_RATE = 5e-4                                                                        # Learning rate for the critic network
 ACTOR_LEARNING_RATE = 1e-4                                                                         # Learning rate for the policy network
 bound_NN_action = False                                                                            # Flag to bound the action output by the NN
-u_max = 2.5                                                                                        # Max action value
+MAX_NORM_A = 1.0                                                                                   # Maximum norm of gradient for actor
+MAX_NORM_C = 1.0                                                                                   # Maximum norm of gradient for critic
 
 #-----IIWA-specific params-------------------------------------------------------------------------
 URDF_PATH = os.path.join(os.path.dirname(__file__), 'iiwa.urdf')
