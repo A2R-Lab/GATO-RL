@@ -47,11 +47,7 @@ class ActorCriticNet:
             nn.Linear(64, 128),
             nn.LayerNorm(128),
             nn.ELU(inplace=True),
-
-            nn.Linear(128, 128),
-            nn.LayerNorm(128),
-            nn.ELU(inplace=True),
-
+            
             nn.Linear(128, 1)
         )
 
@@ -62,7 +58,6 @@ class ActorCriticNet:
                 nn.init.constant_(layer.bias, 0)
 
         return model.to(device=device, dtype=dtype)
-
 
     def normalize_tensor(state, state_norm_arr):
         state_norm_time = torch.cat([
