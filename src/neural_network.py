@@ -13,51 +13,56 @@ class ActorCriticNet:
         self.batch_size = conf.BATCH_SIZE
         self.state_dim = conf.nx + 1
 
-    def create_actor(self):
+    def create_actor(self, device='cpu', dtype=torch.float32):
         model = nn.Sequential(
             nn.Linear(self.state_dim, self.conf.NH1),
             nn.LayerNorm(self.conf.NH1),
-            nn.LeakyReLU(negative_slope=0.1),
+            nn.ELU(inplace=True),
+
             nn.Linear(self.conf.NH1, self.conf.NH2),
             nn.LayerNorm(self.conf.NH2),
-            nn.LeakyReLU(negative_slope=0.1),
+            nn.ELU(inplace=True),
+
             nn.Linear(self.conf.NH2, self.conf.nu)
         )
 
+        # Weight initialization
         for layer in model:
             if isinstance(layer, nn.Linear):
-                nn.init.kaiming_uniform_(layer.weight, nonlinearity='leaky_relu')
+                nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
                 nn.init.constant_(layer.bias, 0)
-        return model.to(torch.float32)
 
-    def create_critic(self):
+        return model.to(device=device, dtype=dtype)
+
+    def create_critic(self, device='cpu', dtype=torch.float32):
         model = nn.Sequential(
             nn.Linear(self.state_dim, 64),
             nn.LayerNorm(64),
-            nn.LeakyReLU(negative_slope=0.1),
+            nn.ELU(inplace=True),
 
             nn.Linear(64, 64),
             nn.LayerNorm(64),
-            nn.LeakyReLU(negative_slope=0.1),
+            nn.ELU(inplace=True),
 
             nn.Linear(64, 128),
             nn.LayerNorm(128),
-            nn.LeakyReLU(negative_slope=0.1),
+            nn.ELU(inplace=True),
 
             nn.Linear(128, 128),
             nn.LayerNorm(128),
-            nn.LeakyReLU(negative_slope=0.1),
+            nn.ELU(inplace=True),
 
             nn.Linear(128, 1)
         )
 
-        # Weight init
+        # Weight initialization
         for layer in model:
             if isinstance(layer, nn.Linear):
-                nn.init.kaiming_uniform_(layer.weight, nonlinearity='leaky_relu')
+                nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
                 nn.init.constant_(layer.bias, 0)
 
-        return model.to(torch.float32)
+        return model.to(device=device, dtype=dtype)
+
 
     def normalize_tensor(state, state_norm_arr):
         state_norm_time = torch.cat([
@@ -106,39 +111,16 @@ class ActorCriticNet:
         return loss.item(), full_rtg, values, self.eval(target_critic, states)
 
     def compute_actor_grad(self, actor, critic, states):
+        # r(s, a), where a is actions of the actor
         actions = self.eval(actor, states, is_actor=True)
-        actions.requires_grad_(True)
-        next_states = self.env.simulate_batch(states, actions)
-        if not next_states.requires_grad:
-            next_states.requires_grad_(True)
-
-        # ds'/da
-        ds_next_da = self.env.derivative_batch(states, actions)
-
-        # dV(s')/ds'
-        V_next = self.eval(critic, next_states)
-        dV_ds_next = torch.autograd.grad(
-            outputs=V_next,
-            inputs=next_states,
-            grad_outputs=torch.ones_like(V_next),
-            create_graph=True
-        )[0].view(self.batch_size, 1, self.state_dim)
-
-        # dR/da
         rewards = self.env.reward_batch(states, actions)
-        dR_da = torch.autograd.grad(
-            outputs=rewards,
-            inputs=actions,
-            grad_outputs=torch.ones_like(rewards),
-            create_graph=True
-        )[0].view(self.batch_size, 1, self.conf.nu)
-
-        # dQ/da = dR/da + dV(s')/ds' * ds'/da
-        dQ_da = torch.bmm(dV_ds_next, ds_next_da) + dR_da
-        dQ_da = dQ_da.view(self.batch_size, 1, self.conf.nu)
-        actions = actions.view(self.batch_size, self.conf.nu, 1)
         
-        loss = torch.matmul(-dQ_da, actions).mean()
+        # V(s'), cost-to-go at next states of the critic
+        next_states = self.env.simulate_batch(states, actions)
+        V_next = self.eval(critic, next_states)
+
+        # loss = r(s, a) + V(s')
+        loss = -(rewards + V_next).mean()
         actor.zero_grad()
         loss.backward()
         return loss.item()
