@@ -61,6 +61,7 @@ MC = 0                                                                          
 UPDATE_RATE = 0.001                                                                                # Homotopy rate to update the target critic network if TD(n) is used
 NSTEPS_TD_N = int(NSTEPS/4)
 scale = 1e-3                                                                                       # Reward function scale
+gamma = 0.9
 
 #-----Pendulum Env & SQP Solver--------------------------------------------------------------------
 class PendulumEnv(BaseEnv):

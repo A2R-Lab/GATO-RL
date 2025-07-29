@@ -172,33 +172,37 @@ class RLTrainer:
     def create_TO_init(self, ep, init_state):
         """
         Create initial trajectory for the TrajOpt solver.
+
         Args:
             ep (int): Current episode number.
             init_state (np.ndarray): Initial state with shape (state_dim,).
+
         Returns:
-            states (np.ndarray): Full state trajectory (n+1, state_dim).
-            actions (np.ndarray): Full action trajectory (n, action_dim).
+            states (np.ndarray): Full state trajectory (H+1, state_dim).
+            actions (np.ndarray): Full action trajectory (H, action_dim).
             success (int): 1 if trajectory is valid, 0 otherwise.
         """
-        n = self.conf.NSTEPS - int(init_state[-1] / self.conf.dt)
-        if n <= 0:
-            return None, None, None, 0
+        H = self.conf.NSTEPS - int(init_state[-1] / self.conf.dt)
+        states = np.zeros((H + 1, self.state_dim))
+        actions = np.zeros((H, self.conf.nu))
 
-        actions = np.zeros((n, self.conf.nu))
-        states = np.zeros((n + 1, self.state_dim))
         states[0] = init_state
 
-        for i in range(n):
-            if ep == 0:
-                actions[i] = np.zeros(self.conf.nu)
-            else:
-                state_tensor = torch.tensor(states[i][None], dtype=torch.float32)
-                actions[i] = self.NN.eval(self.actor_model, state_tensor, is_actor=True)\
-                                .squeeze().cpu().detach().numpy()
-            states[i + 1] = self.env.simulate(states[i], actions[i])
+        if ep == 0:
+            # At first episode, just zero actions (or you can randomize)
+            actions[:] = 0
+        else:
+            # Predict all H actions at once
+            state_tensor = torch.tensor(states[0][None], dtype=torch.float32)  # shape (1, state_dim)
+            with torch.no_grad():
+                pred_actions = self.NN.eval(self.actor_model, state_tensor, is_actor=True)  # (1, H, nu)
+            pred_actions = pred_actions.squeeze(0).cpu().numpy()  # (H_pred, nu)
 
+        # Simulate forward the whole trajectory applying predicted actions
+        for i in range(H):
+            states[i + 1] = self.env.simulate(states[i], actions[i])
             if np.isnan(states[i + 1]).any():
-                return None, None, 0
+                return None, None, 0  # invalid rollout
 
         return states, actions, 1
 
