@@ -27,6 +27,6 @@ Then, there will be ```TO_EPISODES```$\times$```(avg. number of timesteps per pr
    
 # Installation
 ```shell
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+conda env create -f environment.yml
+conda activate batch_TO_RL
+python src/run_{}_learn.py
