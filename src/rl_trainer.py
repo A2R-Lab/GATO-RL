@@ -16,6 +16,7 @@ class RLTrainer:
         self.path = f"{self.conf.NN_PATH}/{N_try}"
         os.makedirs(self.path, exist_ok=True)
         self.state_dim = conf.nx + 1
+        self.H = conf.H
         self.actor_model = None
         self.critic_model = None
         self.target_critic = None
@@ -182,27 +183,25 @@ class RLTrainer:
             actions (np.ndarray): Full action trajectory (H, action_dim).
             success (int): 1 if trajectory is valid, 0 otherwise.
         """
-        H = self.conf.NSTEPS - int(init_state[-1] / self.conf.dt)
-        states = np.zeros((H + 1, self.state_dim))
-        actions = np.zeros((H, self.conf.nu))
-
+        n = self.conf.NSTEPS - int(init_state[-1] / self.conf.dt) # number of steps left
+        states = np.zeros((n + 1, self.state_dim))
+        actions = np.zeros((n, self.conf.nu))
         states[0] = init_state
 
-        if ep == 0:
-            # At first episode, just zero actions (or you can randomize)
-            actions[:] = 0
-        else:
-            # Predict all H actions at once
-            state_tensor = torch.tensor(states[0][None], dtype=torch.float32)  # shape (1, state_dim)
-            with torch.no_grad():
-                pred_actions = self.NN.eval(self.actor_model, state_tensor, is_actor=True)  # (1, H, nu)
-            pred_actions = pred_actions.squeeze(0).cpu().numpy()  # (H_pred, nu)
-
-        # Simulate forward the whole trajectory applying predicted actions
-        for i in range(H):
+        # rollout actor's predicted actions
+        for i in range(n):
+            if ep == 0:
+                action = np.zeros(self.conf.nu)
+            else:
+                state_tensor = torch.tensor(states[i][None], dtype=torch.float32)
+                with torch.no_grad():
+                    pred_actions = self.NN.eval(self.actor_model, state_tensor, is_actor=True)
+                action = pred_actions[0, 0].cpu().numpy()
+            actions[i] = action
             states[i + 1] = self.env.simulate(states[i], actions[i])
+            
             if np.isnan(states[i + 1]).any():
-                return None, None, 0  # invalid rollout
+                return None, None, 0
 
         return states, actions, 1
 

@@ -28,6 +28,7 @@ NORMALIZE_INPUTS = 0                                                            
 NORM_ARR = np.array([10,10,int(NSTEPS*dt)])                                                        # Array of values to normalize by
 MAX_NORM_A = 1.0                                                                                   # Maximum norm of gradient for actor
 MAX_NORM_C = 1.0                                                                                   # Maximum norm of gradient for critic
+H = int(NSTEPS/2)
 
 #-----Misc params----------------------------------------------------------------------------------
 REPLAY_SIZE = 2**20                                                                                # Size of the replay buffer

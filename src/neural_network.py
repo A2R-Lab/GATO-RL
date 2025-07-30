@@ -12,6 +12,8 @@ class ActorCriticNet:
         self.MSE = nn.MSELoss()
         self.batch_size = conf.BATCH_SIZE
         self.state_dim = conf.nx + 1
+        self.action_dim = conf.nu
+        self.H = self.conf.H
 
     def create_actor(self, device='cpu', dtype=torch.float32):
         model = nn.Sequential(
@@ -23,7 +25,7 @@ class ActorCriticNet:
             nn.LayerNorm(self.conf.NH2),
             nn.ELU(inplace=True),
 
-            nn.Linear(self.conf.NH2, self.conf.nu * self.conf.NSTEPS)
+            nn.Linear(self.conf.NH2, self.conf.nu * self.H)
         )
 
         # Weight initialization
@@ -89,9 +91,7 @@ class ActorCriticNet:
 
         if is_actor:
             B = input.shape[0]
-            H = self.conf.NSTEPS
-            nu = self.conf.nu
-            output = output.view(B, H, nu)
+            output = output.view(B, self.H, self.action_dim)
 
         return output
 
@@ -124,42 +124,24 @@ class ActorCriticNet:
         Returns:
             loss.item(): scalar loss
         """
-        H = self.conf.NSTEPS  # Actor prediction horizon
-        n = self.conf.NSTEPS_TD_N  # TD bootstrap steps
         gamma = self.conf.gamma
         B = states.shape[0]
 
-        # Actor outputs H actions per state: (B, H, A)
-        actions_seq = self.eval(actor, states, is_actor=True)  # (B, H, A)
+        # for each state in the horizon state_h, find the reward for the action_h
+        actions_seq = self.eval(actor, states, is_actor=True)
+        discounted_return = torch.zeros(B, device=states.device)
+        states_h = states
 
-        # Use only first n actions for computing multi-step return
-        actions_seq_n = actions_seq[:, :n]
+        for h in range(self.H):
+            actions_h = actions_seq[:, h]
+            rewards_h = self.env.reward_batch(states_h, actions_h).squeeze(-1)
+            discounted_return += (gamma ** h) * rewards_h
+            states_h = self.env.simulate_batch(states_h, actions_h)
 
-        # Prepare containers for rollout and rewards
-        rewards_seq = []
-        current_states = states  # (B, D)
-
-        for h in range(n):
-            actions_h = actions_seq_n[:, h]  # (B, A)
-
-            rewards_h = self.env.reward_batch(current_states, actions_h)  # (B,)
-            rewards_seq.append(rewards_h)
-
-            current_states = self.env.simulate_batch(current_states, actions_h)  # (B, D)
-
-        final_states = current_states  # s_{t+n}
-        V_final = self.eval(critic, final_states, is_actor=False).squeeze(-1)  # (B,)
-
-        # Compute discounted rewards sum for n steps
-        rewards_seq = torch.stack(rewards_seq, dim=1).squeeze(-1)  # (B, n)
-        discounts = gamma ** torch.arange(n, device=states.device, dtype=torch.float32)  # (n,)
-        returns = (rewards_seq * discounts.view(1, -1)).sum(dim=1)  # (B,)
-        returns = returns.view(-1)     # Ensure shape [B]
-        V_final = V_final.view(-1)     # Ensure shape [B]
-        returns += (gamma ** n) * V_final
-
-        # Loss = negative return
-        loss = -returns.mean()
+        # add the cost-to-go at the final state
+        V_final = self.eval(critic, states_h, is_actor=False).squeeze(-1)
+        discounted_return += (gamma ** self.H) * V_final
+        loss = -discounted_return.mean()
         actor.zero_grad()
         loss.backward()
         return loss.item()
